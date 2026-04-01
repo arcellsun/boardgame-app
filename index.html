@@ -1,1 +1,1287 @@
-test content
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="보드게임 매니저" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#c0392b" />
+  <title>🎲 보드게임 매니저</title>
+
+  <!-- PWA Manifest (인라인) -->
+  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22%EB%B3%B4%EB%93%9C%EA%B2%8C%EC%9E%84+%EB%A7%A4%EB%8B%88%EC%A0%80%22%2C%22short_name%22%3A%22%EB%B3%B4%EB%93%9C%EA%B2%8C%EC%9E%84%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23faf8f4%22%2C%22theme_color%22%3A%22%23c0392b%22%7D" />
+
+  <!-- 로딩 스타일 -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #faf8f4; font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; }
+    #loading {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; background: #faf8f4; z-index: 9999;
+    }
+    .spinner {
+      width: 48px; height: 48px; border: 4px solid #ede8df;
+      border-top-color: #c0392b; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: #9a9088; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <!-- 로딩 화면 -->
+  <div id="loading">
+    <div style="font-size:48px;margin-bottom:12px">🎲</div>
+    <div class="spinner"></div>
+    <p>보드게임 매니저 로딩 중...</p>
+  </div>
+
+  <div id="root"></div>
+
+  <!-- React 18 -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Babel Standalone (JSX 컴파일) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 앱 코드 -->
+  <script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect } = React;
+
+// ─── 상수 ────────────────────────────────────
+const GENRES = ["전략", "파티", "협력", "추리", "경제", "카드", "RPG", "추상", "패밀리", "기타"];
+const DIFFICULTIES = ["매우 쉬움", "쉬움", "보통", "어려움", "매우 어려움"];
+
+const DIFFICULTY_COLORS = {
+  "매우 쉬움": { bg: "#d1fae5", text: "#065f46", border: "#a7f3d0" },
+  "쉬움":      { bg: "#dcfce7", text: "#166534", border: "#bbf7d0" },
+  "보통":      { bg: "#fef9c3", text: "#854d0e", border: "#fde68a" },
+  "어려움":    { bg: "#ffedd5", text: "#9a3412", border: "#fdba74" },
+  "매우 어려움":{ bg: "#fee2e2", text: "#991b1b", border: "#fca5a5" },
+};
+
+const GENRE_BADGE_COLORS = [
+  { bg: "#dbeafe", text: "#1e40af" },
+  { bg: "#ede9fe", text: "#5b21b6" },
+  { bg: "#d1fae5", text: "#065f46" },
+  { bg: "#fef3c7", text: "#92400e" },
+  { bg: "#e0f2fe", text: "#0c4a6e" },
+  { bg: "#fee2e2", text: "#991b1b" },
+  { bg: "#d1fae5", text: "#065f46" },
+  { bg: "#f3e8ff", text: "#6b21a8" },
+  { bg: "#ffedd5", text: "#7c2d12" },
+  { bg: "#ccfbf1", text: "#134e4a" },
+];
+
+// ─── 로컬 게임 DB (한국 인기 보드게임) ──────────
+const BOARDGAME_LOCAL_DB = [
+  { id:"g001", name:"브라스: 버밍엄", englishName:"Brass: Birmingham", minPlayers:2, maxPlayers:4, minTime:60, maxTime:120, genre:"전략", difficulty:"어려움", description:"18~19세기 영국 버밍엄의 산업혁명을 배경으로 하는 경제 전략 게임. 운하와 철도 네트워크를 구축하고 공장을 세워 가장 높은 점수를 획득하세요.", tags:["경제","네트워크","2인가능"] },
+  { id:"g002", name:"판데믹 레거시: 시즌1", englishName:"Pandemic Legacy: Season 1", minPlayers:2, maxPlayers:4, minTime:60, maxTime:75, genre:"협력", difficulty:"보통", description:"전 세계에 퍼지는 질병을 막는 레거시 협력 게임. 매 게임마다 세계가 영구적으로 변화하며 12개월 캠페인 방식으로 진행됩니다.", tags:["레거시","협력","캠페인"] },
+  { id:"g003", name:"글룸헤이븐", englishName:"Gloomhaven", minPlayers:1, maxPlayers:4, minTime:60, maxTime:120, genre:"협력", difficulty:"어려움", description:"어두운 세계관의 대형 협력 던전 탐험 게임. 캐릭터를 성장시키며 수십 개의 시나리오를 클리어해 나가는 방대한 캠페인을 즐길 수 있습니다.", tags:["던전","RPG","캠페인","솔로가능"] },
+  { id:"g004", name:"테라포밍 마스", englishName:"Terraforming Mars", minPlayers:1, maxPlayers:5, minTime:90, maxTime:120, genre:"전략", difficulty:"보통", description:"기업 대표로서 화성 테라포밍 프로젝트에 참여하는 전략 게임. 산소·온도·바다를 채워가며 화성을 인류가 살 수 있는 행성으로 만드세요.", tags:["엔진빌딩","우주","솔로가능"] },
+  { id:"g005", name:"윙스팬", englishName:"Wingspan", minPlayers:1, maxPlayers:5, minTime:40, maxTime:70, genre:"전략", difficulty:"보통", description:"새를 모으고 서식지를 확장하는 아름다운 엔진빌딩 게임. 170종 이상의 실제 새 카드를 활용해 자신만의 새 왕국을 만드세요.", tags:["엔진빌딩","자연","카드","솔로가능"] },
+  { id:"g006", name:"7 원더스 듀얼", englishName:"7 Wonders Duel", minPlayers:2, maxPlayers:2, minTime:30, maxTime:45, genre:"전략", difficulty:"보통", description:"두 명이 즐기는 문명 건설 카드 게임. 피라미드 형태로 펼쳐진 카드를 전략적으로 선택해 군사·과학·경제 세 가지 방법으로 승리를 노리세요.", tags:["2인전용","문명","카드드래프트"] },
+  { id:"g007", name:"스피릿 아일랜드", englishName:"Spirit Island", minPlayers:1, maxPlayers:4, minTime:90, maxTime:120, genre:"협력", difficulty:"어려움", description:"섬의 정령이 되어 침략자들을 물리치는 협력 게임. 각 정령은 고유한 능력을 가지며 팀워크가 중요합니다.", tags:["협력","비대칭","솔로가능"] },
+  { id:"g008", name:"아그리콜라", englishName:"Agricola", minPlayers:1, maxPlayers:5, minTime:30, maxTime:150, genre:"전략", difficulty:"보통", description:"중세 농부 가족이 되어 농장을 일구는 일꾼 배치 게임. 양식을 구하고 방을 늘리며 가족을 부양하는 치열한 자원 관리의 재미를 느껴보세요.", tags:["일꾼배치","농장","솔로가능"] },
+  { id:"g009", name:"아줄", englishName:"Azul", minPlayers:2, maxPlayers:4, minTime:30, maxTime:45, genre:"추상", difficulty:"쉬움", description:"포르투갈 왕궁을 장식하는 아름다운 타일 배치 게임. 다양한 색상의 타일을 수집하고 벽에 배치해 가장 아름다운 패턴을 완성하세요.", tags:["타일배치","퍼즐","2인가능"] },
+  { id:"g010", name:"스플렌더", englishName:"Splendor", minPlayers:2, maxPlayers:4, minTime:30, maxTime:45, genre:"전략", difficulty:"쉬움", description:"르네상스 시대 보석 상인이 되어 광산과 운송·상점을 개발하는 카드 수집 게임. 보석 토큰을 모으고 카드를 구매해 귀족의 방문을 유치하세요.", tags:["엔진빌딩","보석","카드수집"] },
+  { id:"g011", name:"티켓 투 라이드", englishName:"Ticket to Ride", minPlayers:2, maxPlayers:5, minTime:45, maxTime:75, genre:"전략", difficulty:"쉬움", description:"기차 노선을 건설해 북미 대륙을 연결하는 노선 건설 게임. 목적지 카드를 완성하고 긴 노선을 구축해 보너스 점수를 획득하세요.", tags:["기차","네트워크","입문","가족"] },
+  { id:"g012", name:"카탄", englishName:"Catan", minPlayers:3, maxPlayers:4, minTime:60, maxTime:120, genre:"전략", difficulty:"쉬움", description:"카탄 섬에 정착민이 되어 자원을 수집하고 개척지를 건설하는 보드게임의 클래식. 무역과 협상으로 다른 플레이어와 상호작용하는 재미가 있습니다.", tags:["무역","개척","클래식","입문"] },
+  { id:"g013", name:"도미니언", englishName:"Dominion", minPlayers:2, maxPlayers:4, minTime:30, maxTime:45, genre:"카드", difficulty:"보통", description:"덱 빌딩 장르를 창시한 기념비적 작품. 왕국 카드를 구매해 자신의 덱을 발전시키고 승점 카드를 모아 최고의 왕국을 만드세요.", tags:["덱빌딩","카드","전략"] },
+  { id:"g014", name:"팬데믹", englishName:"Pandemic", minPlayers:2, maxPlayers:4, minTime:45, maxTime:75, genre:"협력", difficulty:"보통", description:"전 세계에 퍼지는 4가지 질병을 막기 위해 협력하는 게임. 각자 고유한 역할을 맡아 팀워크로 치료제를 개발하고 인류를 구하세요.", tags:["협력","질병","역할"] },
+  { id:"g015", name:"디셉션: 홍콩 살인사건", englishName:"Deception: Murder in Hong Kong", minPlayers:4, maxPlayers:12, minTime:20, maxTime:30, genre:"파티", difficulty:"쉬움", description:"홍콩 살인 사건을 배경으로 한 사회적 추리 게임. 법의학자의 힌트를 바탕으로 탐정들이 살인자와 증거물을 추리합니다.", tags:["숨겨진역할","추리","파티"] },
+  { id:"g016", name:"코드네임", englishName:"Codenames", minPlayers:2, maxPlayers:8, minTime:15, maxTime:30, genre:"파티", difficulty:"쉬움", description:"두 팀으로 나뉘어 스파이 요원의 코드네임을 맞추는 단어 연상 게임. 스파이마스터는 한 단어 힌트로 팀원들을 올바른 카드로 안내해야 합니다.", tags:["단어","팀","파티"] },
+  { id:"g017", name:"저항군: 아발론", englishName:"The Resistance: Avalon", minPlayers:5, maxPlayers:10, minTime:30, maxTime:45, genre:"파티", difficulty:"쉬움", description:"아서왕 전설을 배경으로 한 숨겨진 역할 게임. 선의 기사와 악의 스파이로 나뉘어 퀘스트의 성공과 실패를 두고 두뇌 싸움을 벌이세요.", tags:["숨겨진역할","블러핑","파티"] },
+  { id:"g018", name:"스컬킹", englishName:"Skull King", minPlayers:2, maxPlayers:6, minTime:30, maxTime:45, genre:"파티", difficulty:"쉬움", description:"해적을 테마로 한 트릭 테이킹 예측 카드 게임. 자신이 이길 트릭 수를 미리 예측하고 정확히 맞추면 보너스 점수를 획득합니다.", tags:["트릭테이킹","예측","해적"] },
+  { id:"g019", name:"러브레터", englishName:"Love Letter", minPlayers:2, maxPlayers:6, minTime:15, maxTime:20, genre:"파티", difficulty:"매우 쉬움", description:"단 16장의 카드로 즐기는 미니멀 추리 게임. 공주에게 러브레터를 전달하기 위해 다른 플레이어를 제거하거나 가장 높은 카드를 보유하세요.", tags:["미니게임","추리","카드"] },
+  { id:"g020", name:"두잇", englishName:"Dixit", minPlayers:3, maxPlayers:6, minTime:30, maxTime:45, genre:"파티", difficulty:"쉬움", description:"아름다운 일러스트 카드로 즐기는 상상력 게임. 이야기꾼이 카드를 설명하면 다른 플레이어가 자신의 카드 중 가장 잘 맞는 것을 골라 제출합니다.", tags:["상상력","그림","파티"] },
+  { id:"g021", name:"뱅!", englishName:"Bang!", minPlayers:4, maxPlayers:7, minTime:20, maxTime:40, genre:"파티", difficulty:"쉬움", description:"서부극을 배경으로 한 숨겨진 역할 카드 게임. 보안관·부관·무법자·배신자로 나뉘어 각자의 목표를 달성하는 파티 게임입니다.", tags:["숨겨진역할","서부","파티"] },
+  { id:"g022", name:"할리갈리", englishName:"Halli Galli", minPlayers:2, maxPlayers:6, minTime:15, maxTime:20, genre:"파티", difficulty:"매우 쉬움", description:"과일 카드를 뒤집어 같은 종류의 과일이 정확히 5개가 될 때 종을 치는 반응 속도 게임. 온 가족이 함께 즐길 수 있는 파티 게임입니다.", tags:["반응속도","가족","파티"] },
+  { id:"g023", name:"스코틀랜드 야드", englishName:"Scotland Yard", minPlayers:3, maxPlayers:6, minTime:45, maxTime:60, genre:"협력", difficulty:"보통", description:"런던 거리에서 한 명의 탈주범과 여러 명의 형사가 벌이는 추격전 게임. 형사들은 협력해 탈주범을 잡아야 합니다.", tags:["협력","추리","이동"] },
+  { id:"g024", name:"쿼리도", englishName:"Quoridor", minPlayers:2, maxPlayers:4, minTime:15, maxTime:25, genre:"추상", difficulty:"쉬움", description:"담장을 세워 상대방의 경로를 막으면서 자신은 목적지에 먼저 도달하는 추상 전략 게임. 단순한 규칙이지만 깊은 전략이 숨어 있습니다.", tags:["추상전략","2인가능","퍼즐"] },
+  { id:"g025", name:"하이브", englishName:"Hive", minPlayers:2, maxPlayers:2, minTime:20, maxTime:30, genre:"추상", difficulty:"보통", description:"보드 없이 즐기는 추상 전략 게임. 곤충 모양의 헥사곤 피스로 상대방의 여왕벌을 포위하세요. 어디서나 즐길 수 있습니다.", tags:["2인전용","추상전략","휴대용"] },
+  { id:"g026", name:"루미큐브", englishName:"Rummikub", minPlayers:2, maxPlayers:4, minTime:45, maxTime:60, genre:"파티", difficulty:"쉬움", description:"숫자와 색이 있는 타일을 이용해 세트와 런을 만들며 손패를 모두 내려놓는 클래식 타일 게임. 전략적 배치와 다른 사람의 조합 활용이 핵심입니다.", tags:["수패","클래식","가족"] },
+  { id:"g027", name:"루트", englishName:"Root", minPlayers:2, maxPlayers:4, minTime:60, maxTime:90, genre:"전략", difficulty:"어려움", description:"숲의 지배권을 놓고 비대칭 세력이 싸우는 전략 게임. 고양이 왕국·독수리 왕조·숲속 연합·방랑자 등 각기 다른 방식으로 플레이합니다.", tags:["비대칭","전쟁","동물"] },
+  { id:"g028", name:"블러드레이지", englishName:"Blood Rage", minPlayers:2, maxPlayers:4, minTime:60, maxTime:90, genre:"전략", difficulty:"보통", description:"북유럽 신화를 배경으로 바이킹 씨족이 라그나로크 전야에 영광을 쟁취하는 전략 게임. 전투와 퀘스트, 능력 업그레이드가 조화롭게 어우러집니다.", tags:["드래프트","북유럽신화","전쟁"] },
+  { id:"g029", name:"에버델", englishName:"Everdell", minPlayers:1, maxPlayers:4, minTime:40, maxTime:80, genre:"전략", difficulty:"보통", description:"귀여운 동물들이 사는 에버델 계곡에 도시를 건설하는 일꾼 배치 카드 게임. 4계절에 걸쳐 도시에 15장의 카드를 배치해 완성하세요.", tags:["일꾼배치","카드빌딩","솔로가능"] },
+  { id:"g030", name:"버건디의 성", englishName:"The Castles of Burgundy", minPlayers:2, maxPlayers:4, minTime:30, maxTime:90, genre:"전략", difficulty:"보통", description:"중세 프랑스 귀족이 되어 강변 영지를 발전시키는 게임. 주사위 두 개를 굴려 지역을 개발하고 타일을 배치해 영지를 완성하세요.", tags:["주사위","타일배치","2인가능"] },
+  { id:"g031", name:"캐스케이디아", englishName:"Cascadia", minPlayers:1, maxPlayers:4, minTime:30, maxTime:45, genre:"전략", difficulty:"쉬움", description:"태평양 북서부 생태계를 배경으로 서식지 타일과 동물 토큰을 배치하는 게임. 연어·곰·독수리 등의 동물 패턴을 완성해 점수를 획득하세요.", tags:["타일배치","자연","솔로가능"] },
+  { id:"g032", name:"크베들린부르크의 돌팔이 약장수", englishName:"The Quacks of Quedlinburg", minPlayers:2, maxPlayers:4, minTime:45, maxTime:75, genre:"전략", difficulty:"보통", description:"돌팔이 약장수가 되어 재료를 무작위로 추가하며 물약을 만드는 게임. 주머니에서 재료를 하나씩 꺼내 폭발 직전까지 최대한 우려내세요.", tags:["푸시유어럭","주머니","전략"] },
+  { id:"g033", name:"비티컬처", englishName:"Viticulture: Essential Edition", minPlayers:1, maxPlayers:6, minTime:45, maxTime:90, genre:"전략", difficulty:"보통", description:"토스카나의 와이너리를 운영하는 일꾼 배치 게임. 포도를 재배하고 와인을 만들어 주문을 채워가며 최고의 와이너리를 완성하세요.", tags:["와인","일꾼배치","솔로가능"] },
+  { id:"g034", name:"엘도라도를 찾아서", englishName:"The Quest for El Dorado", minPlayers:2, maxPlayers:4, minTime:30, maxTime:60, genre:"전략", difficulty:"쉬움", description:"덱 빌딩과 레이싱을 결합한 탐험 게임. 탐험가를 이끌고 정글을 헤쳐나가 황금의 도시 엘도라도에 가장 먼저 도달하세요.", tags:["덱빌딩","레이싱","탐험"] },
+  { id:"g035", name:"스몰 월드", englishName:"Small World", minPlayers:2, maxPlayers:5, minTime:40, maxTime:80, genre:"전략", difficulty:"보통", description:"너무 좁은 판타지 세계에서 다양한 종족과 특수 능력의 조합으로 영역을 차지하는 전략 게임. 종족이 쇠퇴하면 새 종족으로 교체하세요.", tags:["판타지","영역","전쟁"] },
+  { id:"g036", name:"가이아 프로젝트", englishName:"Gaia Project", minPlayers:1, maxPlayers:4, minTime:60, maxTime:150, genre:"전략", difficulty:"어려움", description:"14개의 외계 종족 중 하나를 선택해 은하계를 개척하는 대형 전략 게임. 기술 연구와 행성 테라포밍으로 최고의 문명을 건설하세요.", tags:["우주","엔진빌딩","솔로가능"] },
+  { id:"g037", name:"파워 그리드", englishName:"Power Grid", minPlayers:2, maxPlayers:6, minTime:120, maxTime:150, genre:"경제", difficulty:"어려움", description:"전력 회사를 운영하며 발전소를 건설하고 도시에 전력을 공급하는 경제 전략 게임. 자원 시장과 경매를 통해 최고의 전력망을 구축하세요.", tags:["경제","경매","네트워크"] },
+  { id:"g038", name:"쓰루 더 에이지스", englishName:"Through the Ages", minPlayers:2, maxPlayers:4, minTime:120, maxTime:240, genre:"전략", difficulty:"어려움", description:"고대부터 현대까지 문명을 발전시키는 대형 문명 건설 게임. 과학 기술 연구·군사력 강화·문화 발전을 통해 인류 최고의 문명을 건설하세요.", tags:["문명","카드드래프트","장시간"] },
+  { id:"g039", name:"로빈슨 크루소", englishName:"Robinson Crusoe", minPlayers:1, maxPlayers:4, minTime:60, maxTime:120, genre:"협력", difficulty:"어려움", description:"저주받은 섬에 표류한 탐험가들이 생존하고 탈출하는 협력 게임. 날씨·야생동물·식량 부족 등 끊임없는 위기를 극복하세요.", tags:["생존","협력","솔로가능"] },
+  { id:"g040", name:"탐정: 현대 범죄 이야기", englishName:"Detective: A Modern Crime Board Game", minPlayers:1, maxPlayers:5, minTime:120, maxTime:180, genre:"협력", difficulty:"어려움", description:"실제 범죄 수사를 시뮬레이션하는 협력 추리 게임. 증거를 수집하고 DB를 검색하며 5개의 연결된 사건을 해결해 나가세요.", tags:["추리","협력","범죄","솔로가능"] },
+  { id:"g041", name:"7 원더스", englishName:"7 Wonders", minPlayers:2, maxPlayers:7, minTime:30, maxTime:45, genre:"전략", difficulty:"보통", description:"세계 7대 불가사의를 건설하며 문명을 발전시키는 카드 드래프트 게임. 3시대에 걸쳐 과학·군사·무역·문화를 발전시키세요.", tags:["문명","카드드래프트","다인원"] },
+  { id:"g042", name:"스타 워즈: 임페리얼 어썰트", englishName:"Star Wars: Imperial Assault", minPlayers:2, maxPlayers:5, minTime:60, maxTime:120, genre:"협력", difficulty:"어려움", description:"스타워즈 세계관에서 제국군과 반란군이 맞붙는 미니어처 전략 게임. 캠페인 모드와 스카미시 모드를 즐길 수 있습니다.", tags:["스타워즈","미니어처","캠페인"] },
+  { id:"g043", name:"레이스 포 더 갤럭시", englishName:"Race for the Galaxy", minPlayers:2, maxPlayers:4, minTime:30, maxTime:45, genre:"카드", difficulty:"보통", description:"우주를 배경으로 행성을 탐험하고 개발하는 빠른 카드 게임. 동시에 행동을 선택하고 상대의 선택을 예측하는 긴장감이 매력입니다.", tags:["카드","엔진빌딩","우주"] },
+  { id:"g044", name:"스시고!", englishName:"Sushi Go!", minPlayers:2, maxPlayers:5, minTime:15, maxTime:20, genre:"파티", difficulty:"매우 쉬움", description:"스시 재료 카드를 돌려가며 선택하는 카드 드래프트 게임. 초밥·연어알·푸딩 등 다양한 스시 재료를 조합해 최고의 점수를 모으세요.", tags:["드래프트","카드","파티","입문"] },
+  { id:"g045", name:"부루마블", englishName:"Monopoly (Korea)", minPlayers:2, maxPlayers:6, minTime:60, maxTime:180, genre:"파티", difficulty:"쉬움", description:"한국판 모노폴리로 전국의 부동산을 사고파는 클래식 보드게임. 주사위를 굴려 토지를 매입하고 건물을 지어 최고의 부동산 재벌이 되세요.", tags:["클래식","부동산","가족"] },
+  { id:"g046", name:"다빈치 코드", englishName:"The Da Vinci Code", minPlayers:2, maxPlayers:4, minTime:20, maxTime:30, genre:"추리", difficulty:"쉬움", description:"숫자가 적힌 타일을 숨기고 추리를 통해 상대방의 타일 순서를 맞추는 게임. 논리적 사고와 블러핑을 조합한 가볍고 재밌는 추리 게임입니다.", tags:["추리","숫자","블러핑"] },
+  { id:"g047", name:"셋!", englishName:"Set", minPlayers:1, maxPlayers:20, minTime:15, maxTime:30, genre:"파티", difficulty:"쉬움", description:"카드에 표시된 모양·색·수·음영의 속성 세 가지를 조합해 '셋'을 가장 빠르게 찾아내는 실시간 게임입니다.", tags:["퍼즐","패턴인식","파티"] },
+  { id:"g048", name:"방랑의 서", englishName:"Wandering Towers", minPlayers:2, maxPlayers:6, minTime:20, maxTime:30, genre:"파티", difficulty:"쉬움", description:"마법사들이 이동하는 탑 안에 상대를 가두는 기발한 파티 게임. 마법사를 탑 안팎으로 이동시키며 상대를 탑 안에 가두세요.", tags:["마법","이동","파티"] },
+  { id:"g049", name:"도카이도", englishName:"Tokaido", minPlayers:2, maxPlayers:5, minTime:45, maxTime:60, genre:"전략", difficulty:"쉬움", description:"동해도를 따라 여행하며 경험을 쌓는 아름다운 게임. 온천·식사·풍경화·기념품 등 다양한 방법으로 가장 풍요로운 여행을 즐기세요.", tags:["여행","수집","힐링"] },
+  { id:"g050", name:"아컴 호러: 카드 게임", englishName:"Arkham Horror: The Card Game", minPlayers:1, maxPlayers:4, minTime:60, maxTime:120, genre:"협력", difficulty:"어려움", description:"러브크래프트 세계관을 배경으로 한 협력형 카드 게임. 탐정이 되어 아컴 시티의 공포스러운 사건을 해결하는 캠페인을 즐겨보세요.", tags:["LCG","호러","협력","솔로가능"] },
+  { id:"g051", name:"원카드", englishName:"Uno", minPlayers:2, maxPlayers:10, minTime:30, maxTime:60, genre:"파티", difficulty:"매우 쉬움", description:"색과 숫자가 맞는 카드를 내려가며 손패를 먼저 없애는 클래식 카드 게임. 마지막 카드 한 장이 남으면 '우노!'를 외쳐야 합니다.", tags:["클래식","카드","가족"] },
+  { id:"g052", name:"클루", englishName:"Clue / Cluedo", minPlayers:2, maxPlayers:6, minTime:45, maxTime:75, genre:"추리", difficulty:"쉬움", description:"저택에서 일어난 살인 사건의 범인·무기·장소를 추리하는 클래식 게임. 단서를 모으고 논리적으로 사건을 해결하세요.", tags:["추리","클래식","가족"] },
+  { id:"g053", name:"마법사 주식회사", englishName:"Sorcerer City", minPlayers:1, maxPlayers:4, minTime:30, maxTime:60, genre:"전략", difficulty:"보통", description:"실시간 덱 빌딩과 타일 배치를 결합한 독특한 게임. 타이머가 돌아가는 동안 타일을 배치해 마법 도시를 건설하세요.", tags:["실시간","덱빌딩","타일배치"] },
+  { id:"g054", name:"젬 오브 더 마운틴", englishName:"Gem of the Mountain", minPlayers:2, maxPlayers:4, minTime:30, maxTime:60, genre:"전략", difficulty:"보통", description:"광산에서 보석을 채굴하고 거래하는 전략 게임입니다.", tags:["보석","전략","경제"] },
+  { id:"g055", name:"언더워터 시티즈", englishName:"Underwater Cities", minPlayers:1, maxPlayers:4, minTime:80, maxTime:150, genre:"전략", difficulty:"어려움", description:"해저 도시를 건설하는 일꾼 배치 게임. 카드와 행동을 연계해 강력한 엔진을 구축하고 해저 문명을 발전시키세요.", tags:["일꾼배치","엔진빌딩","솔로가능"] },
+  { id:"g056", name:"커피 로스터", englishName:"Coffee Roaster", minPlayers:1, maxPlayers:1, minTime:30, maxTime:45, genre:"전략", difficulty:"보통", description:"커피 로스터가 되어 원두를 완벽하게 로스팅하는 솔로 퍼즐 게임. 주머니에서 토큰을 꺼내며 원두의 향미를 최적으로 끌어올리세요.", tags:["솔로전용","퍼즐","커피"] },
+  { id:"g057", name:"타임즈업!", englishName:"Time's Up!", minPlayers:4, maxPlayers:12, minTime:30, maxTime:60, genre:"파티", difficulty:"쉬움", description:"유명 인물 카드를 다양한 방법으로 설명해 맞추는 파티 게임. 3라운드에 걸쳐 말로 설명·한 단어·몸으로만 표현하는 방식이 달라집니다.", tags:["설명","팀","파티","다인원"] },
+  { id:"g058", name:"왕좌의 게임", englishName:"A Game of Thrones: The Board Game", minPlayers:3, maxPlayers:6, minTime:120, maxTime:180, genre:"전략", difficulty:"어려움", description:"웨스테로스를 배경으로 각 가문이 철왕좌를 차지하기 위해 겨루는 대전략 게임. 외교·배신·전쟁을 통해 요새를 먼저 확보하세요.", tags:["외교","전쟁","장시간"] },
+  { id:"g059", name:"아컴 호러 3판", englishName:"Arkham Horror (Third Edition)", minPlayers:1, maxPlayers:6, minTime:120, maxTime:180, genre:"협력", difficulty:"어려움", description:"러브크래프트 세계관의 아컴 시티에서 펼쳐지는 대형 협력 보드게임. 조사관들이 협력해 고대의 신이 깨어나는 것을 막아야 합니다.", tags:["협력","호러","모험"] },
+  { id:"g060", name:"윙스팬: 아시아", englishName:"Wingspan Asia", minPlayers:1, maxPlayers:5, minTime:40, maxTime:70, genre:"전략", difficulty:"보통", description:"윙스팬의 아시아 확장팩. 아시아 조류를 만나볼 수 있으며 2인 전용 듀얼 모드도 포함되어 있습니다.", tags:["엔진빌딩","자연","확장팩"] },
+  { id:"g061", name:"틴더박스", englishName:"Tinderbox", minPlayers:1, maxPlayers:4, minTime:30, maxTime:60, genre:"협력", difficulty:"보통", description:"불을 다루는 협력 게임. 팀워크로 산불을 제어하고 마을을 지켜내세요.", tags:["협력","전략","솔로가능"] },
+  { id:"g062", name:"마그놀리아", englishName:"Magnolia", minPlayers:1, maxPlayers:4, minTime:30, maxTime:60, genre:"전략", difficulty:"쉬움", description:"꽃잎 타일을 모아 아름다운 목련을 완성하는 퍼즐형 게임. 색상과 패턴을 조합해 자신만의 꽃을 완성하세요.", tags:["타일배치","꽃","솔로가능"] },
+  { id:"g063", name:"야찌", englishName:"Yahtzee", minPlayers:2, maxPlayers:8, minTime:30, maxTime:45, genre:"파티", difficulty:"매우 쉬움", description:"5개의 주사위를 굴려 다양한 조합을 만드는 클래식 다이스 게임. 3번의 굴림 기회로 풀하우스·스트레이트·야찌 등의 조합을 완성하세요.", tags:["주사위","클래식","가족"] },
+  { id:"g064", name:"젠가", englishName:"Jenga", minPlayers:1, maxPlayers:8, minTime:15, maxTime:30, genre:"파티", difficulty:"매우 쉬움", description:"쌓인 나무 블록 탑에서 블록을 하나씩 빼 꼭대기에 쌓는 긴장감 넘치는 게임. 탑이 쓰러지면 패배합니다.", tags:["균형","파티","클래식"] },
+  { id:"g065", name:"디셉션: 홍콩 살인사건 2", englishName:"Deception: Murder in Hong Kong 2", minPlayers:4, maxPlayers:12, minTime:20, maxTime:30, genre:"파티", difficulty:"쉬움", description:"홍콩 살인 사건 2탄. 새로운 역할과 메커니즘이 추가된 업그레이드 버전입니다.", tags:["숨겨진역할","추리","파티"] },
+  { id:"g066", name:"판타지 비행선", englishName:"Celestia", minPlayers:2, maxPlayers:6, minTime:30, maxTime:45, genre:"파티", difficulty:"쉬움", description:"하늘을 나는 비행선을 타고 구름 도시를 탐험하는 푸시유어럭 게임. 언제 내릴지 결정하는 것이 핵심 전략입니다.", tags:["푸시유어럭","파티","비행선"] },
+  { id:"g067", name:"방랑자: 왕국의 여정", englishName:"Wanderer", minPlayers:2, maxPlayers:4, minTime:45, maxTime:75, genre:"협력", difficulty:"보통", description:"왕국을 여행하며 퀘스트를 완수하는 협력 모험 게임입니다.", tags:["협력","모험","퀘스트"] },
+  { id:"g068", name:"타켄도", englishName:"Tachendo", minPlayers:2, maxPlayers:4, minTime:30, maxTime:45, genre:"추상", difficulty:"보통", description:"추상 전략 게임으로 상대의 말을 포위하거나 목표 지점을 점령하세요.", tags:["추상전략","2인가능"] },
+  { id:"g069", name:"딕싯 오디세이", englishName:"Dixit Odyssey", minPlayers:3, maxPlayers:12, minTime:30, maxTime:45, genre:"파티", difficulty:"쉬움", description:"최대 12명이 즐길 수 있는 딕싯 확장판. 더 많은 플레이어와 새로운 84장의 일러스트 카드로 상상력 게임을 즐겨보세요.", tags:["상상력","그림","파티","다인원"] },
+  { id:"g070", name:"킹덤 빌더", englishName:"Kingdom Builder", minPlayers:2, maxPlayers:4, minTime:45, maxTime:60, genre:"전략", difficulty:"보통", description:"지형 카드에 따라 정착지를 배치하고 왕국을 건설하는 전략 게임. 매 게임마다 달라지는 목표 카드로 무한한 재플레이 가능성을 제공합니다.", tags:["타일배치","전략","재플레이성"] },
+  { id:"g071", name:"탈리스만", englishName:"Talisman", minPlayers:2, maxPlayers:6, minTime:90, maxTime:180, genre:"전략", difficulty:"보통", description:"판타지 세계를 탐험하며 왕관 왕좌를 향해 달려가는 모험 게임. 다양한 캐릭터로 왕국을 돌아다니며 능력을 키우세요.", tags:["판타지","주사위","모험"] },
+  { id:"g072", name:"글룸헤이븐: 턱의 입", englishName:"Gloomhaven: Jaws of the Lion", minPlayers:1, maxPlayers:4, minTime:30, maxTime:60, genre:"협력", difficulty:"보통", description:"글룸헤이븐의 입문용 버전. 더 쉽게 시작할 수 있도록 설계된 축약형 캠페인 협력 게임입니다.", tags:["던전","RPG","솔로가능","입문"] },
+];
+
+// ─── 테마 ────────────────────────────────────
+const C = {
+  bg: "#faf8f4",
+  surface: "#ffffff",
+  surface2: "#f5f2ec",
+  border: "#ede8df",
+  borderHover: "#c0392b",
+  accent: "#c0392b",
+  accentHover: "#a93226",
+  accentDim: "#c0392b12",
+  text: "#1c1a17",
+  textSub: "#4a4540",
+  textDim: "#9a9088",
+};
+
+let nextGameId = 100;
+let nextHistoryId = 100;
+
+// ─── 샘플 데이터 ─────────────────────────────
+const initialGames = [
+  {
+    id: 1,
+    name: "카탄",
+    genre: "전략",
+    minPlayers: 3, maxPlayers: 4,
+    duration: 90,
+    difficulty: "보통",
+    description: "섬에서 자원을 모아 정착지와 도시를 건설하는 클래식 유로 전략 게임",
+    objective: "가장 먼저 10점에 도달하면 승리. 정착지(1점), 도시(2점), 최장 도로(2점), 최대 기사단(2점), 발전 카드로 점수 획득.",
+    howToPlay: "주사위를 굴려 나온 숫자가 적힌 지형의 자원을 획득. 자원으로 도로·정착지·도시·발전카드 건설. 도적이 등장하면 자원 탈취 가능. 교역으로 필요한 자원 교환.",
+    components: "육각형 지형 타일 19장, 숫자 토큰 18개, 항구 9개, 도로·정착지·도시 각 플레이어별, 자원 카드, 발전 카드, 주사위 2개",
+    videoUrl: "https://www.youtube.com/watch?v=ztg6A6NKLOM",
+    notes: "첫 정착지 위치 선택이 핵심! 숫자 6·8 근처가 유리.",
+    tags: ["중급", "장시간", "협상"],
+  },
+  {
+    id: 2,
+    name: "코드네임",
+    genre: "파티",
+    minPlayers: 4, maxPlayers: 8,
+    duration: 30,
+    difficulty: "쉬움",
+    description: "두 팀으로 나뉘어 스파이 요원의 코드네임을 맞추는 단어 연상 파티 게임",
+    objective: "팀의 스파이 요원 카드를 모두 먼저 찾으면 승리. 암살자 카드를 선택하면 즉시 패배.",
+    howToPlay: "스파이 마스터가 단 하나의 단어와 숫자로 힌트 제공. 팀원들은 힌트를 듣고 해당하는 단어 카드를 선택. 숫자는 관련 카드 수를 의미. 상대팀 카드나 암살자를 고르면 위험!",
+    components: "코드네임 카드 200장, 열쇠 카드 40장, 팀 색상 카드, 검은 암살자 카드, 카드 스탠드 2개",
+    videoUrl: "https://www.youtube.com/watch?v=J8rdxfGkUt4",
+    notes: "스파이 마스터가 게임의 핵심. 창의적인 단어 연상이 재미.",
+    tags: ["팀전", "언어", "추리"],
+  },
+  {
+    id: 3,
+    name: "아컴 호러",
+    genre: "협력",
+    minPlayers: 1, maxPlayers: 6,
+    duration: 180,
+    difficulty: "어려움",
+    description: "크툴루 신화를 배경으로 탐정들이 함께 고대신의 부활을 막는 협력 어드벤처 게임",
+    objective: "모든 플레이어가 협력하여 고대신의 각성을 막거나, 의식을 완료하면 승리. 아무도 살아남지 못하거나 조건 충족 실패 시 패배.",
+    howToPlay: "각 라운드마다 이벤트 카드 발생. 탐정들은 아캄 시내를 이동하며 몬스터 처치, 단서 수집, 관문 봉인. 체력과 정신력을 관리하며 협력. 시나리오마다 다른 목표 제시.",
+    components: "게임 보드 1개, 탐정 카드 12종, 고대신 카드 8종, 몬스터 토큰 50+개, 카오스 백, 이벤트 카드 덱, 주사위 다수",
+    videoUrl: "https://www.youtube.com/watch?v=ZA3BfQ7liFk",
+    notes: "룰이 복잡하므로 처음엔 쉬운 시나리오부터. 영어판과 한국어판 있음.",
+    tags: ["협력", "장시간", "어려움", "스토리"],
+  },
+  {
+    id: 4,
+    name: "티켓 투 라이드",
+    genre: "전략",
+    minPlayers: 2, maxPlayers: 5,
+    duration: 75,
+    difficulty: "쉬움",
+    description: "기차 카드를 모아 노선을 연결하며 북미 대륙을 횡단하는 가족 전략 게임",
+    objective: "목적지 티켓 완성, 기차 배치, 최장 노선으로 점수 획득. 가장 많은 점수를 얻으면 승리.",
+    howToPlay: "매 턴 기차 카드 뽑기 / 노선 놓기 / 목적지 티켓 뽑기 중 하나 선택. 노선 색과 카드 색을 맞춰 열차 말 배치. 티켓 완성 시 보너스, 미완성 시 감점.",
+    components: "게임 보드(북미 지도), 기차 카드 110장, 목적지 티켓 30장, 기차 말 45개(플레이어별), 역 3개(플레이어별), 점수 마커",
+    videoUrl: "https://www.youtube.com/watch?v=Kv-YUK-HSBU",
+    notes: "버전 다양 (유럽판, 독일판 등). 입문자에게 강력 추천.",
+    tags: ["입문", "가족", "노선"],
+  },
+];
+
+const initialHistory = [
+  { id: 1, gameId: 1, date: "2026-03-15", players: ["sun", "민준", "서연"], winner: "sun", notes: "첫 판이라 헷갈렸지만 재미있었다!" },
+  { id: 2, gameId: 2, date: "2026-03-20", players: ["sun", "민준", "서연", "지호"], winner: "서연", notes: "" },
+  { id: 3, gameId: 1, date: "2026-03-28", players: ["sun", "지호"], winner: "지호", notes: "역전패..." },
+  { id: 4, gameId: 4, date: "2026-03-30", players: ["sun", "민준"], winner: "sun", notes: "" },
+];
+
+// ─── 유틸 ────────────────────────────────────
+const genreColor = (genre) => GENRE_BADGE_COLORS[GENRES.indexOf(genre) % GENRE_BADGE_COLORS.length] || GENRE_BADGE_COLORS[0];
+
+// 난이도 매핑 (로컬DB → 앱 난이도)
+const mapDifficulty = (d) => {
+  if (d === "입문") return "쉬움";
+  if (d === "중급") return "보통";
+  if (d === "고급") return "어려움";
+  return d; // 이미 앱 형식이면 그대로
+};
+
+// ─── AI 게임 검색 (Claude API) ────────────────
+async function aiSearchGame(gameName, apiKey) {
+  const prompt = `다음 보드게임의 정보를 JSON 형식으로 알려주세요. 설명은 반드시 한국어로 작성해주세요.
+게임 이름: ${gameName}
+
+아래 JSON 형식으로만 응답해주세요 (다른 텍스트 없이):
+{
+  "name": "한국어 게임 이름 (없으면 원래 이름 그대로)",
+  "minPlayers": 2,
+  "maxPlayers": 4,
+  "duration": 60,
+  "genre": "전략",
+  "difficulty": "보통",
+  "description": "게임 소개 2~3문장 (한국어)",
+  "objective": "승리 조건 설명 (한국어)",
+  "howToPlay": "게임 진행 방식 설명 (한국어)",
+  "components": "주요 구성품 목록 (한국어)",
+  "tags": ["태그1", "태그2", "태그3"]
+}
+genre는 반드시 다음 중 하나: 전략, 파티, 협력, 추리, 경제, 카드, RPG, 추상, 패밀리, 기타
+difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려움, 매우 어려움`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-allow-browser": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API 오류 (${res.status})`);
+  }
+  const data = await res.json();
+  const text = data.content?.[0]?.text || "";
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("AI 응답 파싱 실패");
+  return JSON.parse(match[0]);
+}
+
+// ─── 컴포넌트 ─────────────────────────────────
+function BoardGameApp() {
+  const [games, setGames] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bg_games');
+      return saved ? JSON.parse(saved) : initialGames;
+    } catch { return initialGames; }
+  });
+  const [history, setHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bg_history');
+      return saved ? JSON.parse(saved) : initialHistory;
+    } catch { return initialHistory; }
+  });
+  const [activeTab, setActiveTab] = useState("library");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterGenre, setFilterGenre] = useState("전체");
+  const [filterPlayers, setFilterPlayers] = useState(0);
+
+  const [showAddGame, setShowAddGame] = useState(false);
+  const [editingGame, setEditingGame] = useState(null);
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [showAddHistory, setShowAddHistory] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+
+  const fileInputRef = useRef(null);
+
+  // 자동 저장
+  useEffect(() => {
+    try { localStorage.setItem('bg_games', JSON.stringify(games)); } catch {}
+  }, [games]);
+  useEffect(() => {
+    try { localStorage.setItem('bg_history', JSON.stringify(history)); } catch {}
+  }, [history]);
+
+  const filteredGames = useMemo(() => games.filter((g) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      (g.name.toLowerCase().includes(q) || g.description.toLowerCase().includes(q) || (g.tags || []).some(t => t.includes(q))) &&
+      (filterGenre === "전체" || g.genre === filterGenre) &&
+      (filterPlayers === 0 || (g.minPlayers <= filterPlayers && g.maxPlayers >= filterPlayers))
+    );
+  }), [games, searchQuery, filterGenre, filterPlayers]);
+
+  const stats = useMemo(() => {
+    const playerStats = {};
+    const gameStats = {};
+    history.forEach((h) => {
+      if (!gameStats[h.gameId]) gameStats[h.gameId] = { plays: 0 };
+      gameStats[h.gameId].plays++;
+      h.players.forEach((p) => {
+        if (!playerStats[p]) playerStats[p] = { plays: 0, wins: 0 };
+        playerStats[p].plays++;
+      });
+      if (h.winner) {
+        if (!playerStats[h.winner]) playerStats[h.winner] = { plays: 0, wins: 0 };
+        playerStats[h.winner].wins++;
+      }
+    });
+    return { playerStats, gameStats };
+  }, [history]);
+
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify({ games, history }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: "boardgame-data.json" }).click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.games) setGames(data.games);
+        if (data.history) setHistory(data.history);
+        alert("✅ 데이터를 성공적으로 불러왔습니다!");
+      } catch { alert("파일 오류: 올바른 JSON 파일을 선택해주세요."); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const addGame = (g) => { setGames((p) => [...p, { ...g, id: nextGameId++ }]); setShowAddGame(false); };
+  const updateGame = (g) => { setGames((p) => p.map((x) => x.id === g.id ? g : x)); setEditingGame(null); if (selectedGame?.id === g.id) setSelectedGame(g); };
+  const deleteGame = (id) => {
+    if (!window.confirm("이 게임을 삭제할까요?\n관련 플레이 기록도 함께 삭제됩니다.")) return;
+    setGames((p) => p.filter((g) => g.id !== id));
+    setHistory((p) => p.filter((h) => h.gameId !== id));
+    if (selectedGame?.id === id) setSelectedGame(null);
+  };
+  const addHistory = (r) => { setHistory((p) => [...p, { ...r, id: nextHistoryId++ }]); setShowAddHistory(false); };
+  const deleteHistory = (id) => { if (window.confirm("기록을 삭제할까요?")) setHistory((p) => p.filter((h) => h.id !== id)); };
+  const getGame = (id) => games.find((g) => g.id === id);
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', sans-serif", color: C.text }}>
+
+      {/* ══ 헤더 ══ */}
+      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 30 }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🎲</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.3px" }}>보드게임 매니저</div>
+              <div style={{ fontSize: 11, color: C.textDim }}>{games.length}개 게임 · {history.length}번 플레이</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Btn size="sm" onClick={handleExport}>⬇ 내보내기</Btn>
+            <Btn size="sm" onClick={() => fileInputRef.current.click()}>⬆ 불러오기</Btn>
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
+            <button onClick={() => setShowSettings(true)} title="AI 설정"
+              style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${apiKey ? C.accent : C.border}`, background: apiKey ? C.accentDim : C.surface2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              ⚙️
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ══ 탭 ══ */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 60, zIndex: 20 }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex" }}>
+          {[
+            { id: "library", label: "🎮 게임 목록" },
+            { id: "history", label: "📋 플레이 기록" },
+            { id: "stats",   label: "📊 통계" },
+            { id: "cafe",    label: "🗺 카페 찾기" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                flex: 1, padding: "12px 8px", fontSize: 13, fontWeight: activeTab === tab.id ? 700 : 400,
+                color: activeTab === tab.id ? C.accent : C.textSub,
+                borderBottom: `2px solid ${activeTab === tab.id ? C.accent : "transparent"}`,
+                background: "none", border: "none",
+                cursor: "pointer", transition: "all .2s",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <main style={{ maxWidth: 720, margin: "0 auto", padding: "20px 16px" }}>
+
+        {/* ══════ TAB: 게임 목록 ══════ */}
+        {activeTab === "library" && (
+          <div>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <div style={{ flex: 1, position: "relative" }}>
+                  <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.textDim, fontSize: 14 }}>🔍</span>
+                  <input
+                    value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="게임 이름, 설명, 태그 검색..."
+                    style={{ width: "100%", paddingLeft: 36, paddingRight: 12, paddingTop: 9, paddingBottom: 9, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+                <Btn onClick={() => setShowAddGame(true)}>+ 게임 추가</Btn>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                {["전체", ...GENRES].map((g) => (
+                  <button key={g} onClick={() => setFilterGenre(g)}
+                    style={{ padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all .15s",
+                      background: filterGenre === g ? C.accent : C.surface2,
+                      color: filterGenre === g ? "#fff" : C.textSub,
+                      border: `1px solid ${filterGenre === g ? C.accent : C.border}` }}>
+                    {g}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: C.textDim }}>인원:</span>
+                {[0, 1, 2, 3, 4, 5, 6, 8].map((n) => (
+                  <button key={n} onClick={() => setFilterPlayers(n)}
+                    style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 500, cursor: "pointer",
+                      background: filterPlayers === n ? C.accent : C.surface2,
+                      color: filterPlayers === n ? "#fff" : C.textSub,
+                      border: `1px solid ${filterPlayers === n ? C.accent : C.border}` }}>
+                    {n === 0 ? "전체" : `${n}인`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12, paddingLeft: 2 }}>{filteredGames.length}개의 게임</div>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              {filteredGames.length === 0 && (
+                <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim }}>
+                  <div style={{ fontSize: 48 }}>🎲</div>
+                  <p style={{ marginTop: 12, fontSize: 14 }}>게임이 없습니다. 추가해보세요!</p>
+                </div>
+              )}
+              {filteredGames.map((game) => {
+                const plays = stats.gameStats[game.id]?.plays || 0;
+                const gc = genreColor(game.genre);
+                const dc = DIFFICULTY_COLORS[game.difficulty] || DIFFICULTY_COLORS["보통"];
+                return (
+                  <div key={game.id}
+                    onClick={() => setSelectedGame(game)}
+                    style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, cursor: "pointer", transition: "border-color .15s" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = C.borderHover}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      {game.imageUrl ? (
+                        <img src={game.imageUrl} alt={game.name}
+                          style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}`, flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 56, height: 56, borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                          🎲
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>{game.name}</span>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: gc.bg, color: gc.text, fontWeight: 600 }}>{game.genre}</span>
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: dc.bg, color: dc.text, border: `1px solid ${dc.border}` }}>{game.difficulty}</span>
+                        </div>
+                        <p style={{ color: C.textSub, fontSize: 13, marginBottom: 8, lineHeight: 1.5 }}>{game.description}</p>
+                        <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.textDim }}>
+                          <span>👥 {game.minPlayers}–{game.maxPlayers}인</span>
+                          <span>⏱ {game.duration}분</span>
+                          <span>🎮 {plays}번 플레이</span>
+                        </div>
+                        {game.tags && game.tags.length > 0 && (
+                          <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                            {game.tags.map(t => (
+                              <span key={t} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.surface2, color: C.textDim, border: `1px solid ${C.border}` }}>#{t}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                        <IconBtn onClick={() => setEditingGame(game)} title="수정">✏️</IconBtn>
+                        <IconBtn onClick={() => deleteGame(game.id)} title="삭제" danger>🗑️</IconBtn>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ══════ TAB: 플레이 기록 ══════ */}
+        {activeTab === "history" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>플레이 기록</span>
+              <Btn onClick={() => setShowAddHistory(true)}>+ 기록 추가</Btn>
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {history.length === 0 && (
+                <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim }}>
+                  <div style={{ fontSize: 48 }}>📋</div>
+                  <p style={{ marginTop: 12, fontSize: 14 }}>아직 플레이 기록이 없습니다.</p>
+                </div>
+              )}
+              {[...history].sort((a, b) => new Date(b.date) - new Date(a.date)).map((record) => {
+                const game = getGame(record.gameId);
+                const gc = game ? genreColor(game.genre) : GENRE_BADGE_COLORS[0];
+                return (
+                  <div key={record.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                          {game && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: gc.bg, color: gc.text }}>{game.genre}</span>}
+                          <span style={{ fontWeight: 700, fontSize: 14 }}>{game?.name || "삭제된 게임"}</span>
+                          <span style={{ fontSize: 11, color: C.textDim }}>{record.date}</span>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: record.notes ? 8 : 0 }}>
+                          {record.players.map((p) => (
+                            <span key={p} style={{
+                              fontSize: 12, padding: "4px 10px", borderRadius: 20, fontWeight: p === record.winner ? 700 : 400,
+                              background: p === record.winner ? "#92400e44" : C.surface2,
+                              color: p === record.winner ? "#fbbf24" : C.textSub,
+                              border: `1px solid ${p === record.winner ? "#92400e" : C.border}`,
+                            }}>
+                              {p === record.winner ? "🏆 " : ""}{p}
+                            </span>
+                          ))}
+                          {!record.winner && <span style={{ fontSize: 11, color: C.textDim, fontStyle: "italic" }}>승자 없음</span>}
+                        </div>
+                        {record.notes && <p style={{ fontSize: 12, color: C.textDim, fontStyle: "italic", marginTop: 6 }}>"{record.notes}"</p>}
+                      </div>
+                      <IconBtn onClick={() => deleteHistory(record.id)} danger>🗑️</IconBtn>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ══════ TAB: 통계 ══════ */}
+        {activeTab === "stats" && (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+              {[
+                { value: games.length, label: "보유 게임", color: C.accent },
+                { value: history.length, label: "총 플레이", color: "#16a34a" },
+                { value: Object.keys(stats.playerStats).length, label: "플레이어", color: "#7c3aed" },
+              ].map((c) => (
+                <div key={c.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, textAlign: "center" }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: c.color }}>{c.value}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>{c.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <StatCard title="🎮 많이 플레이한 게임">
+              {Object.keys(stats.gameStats).length === 0
+                ? <p style={{ color: C.textDim, fontSize: 13 }}>플레이 기록을 추가해보세요!</p>
+                : Object.entries(stats.gameStats).sort((a, b) => b[1].plays - a[1].plays).slice(0, 6).map(([gid, s], i) => {
+                  const game = getGame(Number(gid));
+                  const max = Math.max(...Object.values(stats.gameStats).map(s => s.plays));
+                  if (!game) return null;
+                  return (
+                    <div key={gid} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                      <span style={{ color: C.textDim, fontSize: 11, width: 14 }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, color: C.text, width: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{game.name}</span>
+                      <div style={{ flex: 1, background: C.surface2, borderRadius: 4, height: 6 }}>
+                        <div style={{ width: `${(s.plays / max) * 100}%`, background: C.accent, height: 6, borderRadius: 4 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: C.textDim, width: 24, textAlign: "right" }}>{s.plays}회</span>
+                    </div>
+                  );
+                })
+              }
+            </StatCard>
+
+            <StatCard title="🏆 플레이어 승률">
+              {Object.keys(stats.playerStats).length === 0
+                ? <p style={{ color: C.textDim, fontSize: 13 }}>플레이 기록을 추가해보세요!</p>
+                : Object.entries(stats.playerStats).sort((a, b) => (b[1].wins / b[1].plays) - (a[1].wins / a[1].plays)).map(([player, s], i) => {
+                  const winRate = s.plays > 0 ? Math.round((s.wins / s.plays) * 100) : 0;
+                  const medals = ["🥇", "🥈", "🥉"];
+                  return (
+                    <div key={player} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                      <span style={{ width: 20, textAlign: "center" }}>{medals[i] || ""}</span>
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accentDim, border: `1px solid ${C.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: C.accent, flexShrink: 0 }}>
+                        {player[0].toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{player}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: C.accent }}>{winRate}%</span>
+                        </div>
+                        <div style={{ background: C.surface2, borderRadius: 4, height: 5 }}>
+                          <div style={{ width: `${winRate}%`, background: C.accent, height: 5, borderRadius: 4 }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{s.wins}승 / {s.plays}판</div>
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </StatCard>
+
+            <StatCard title="🎯 장르 분포">
+              {(() => {
+                const cnt = {};
+                games.forEach(g => cnt[g.genre] = (cnt[g.genre] || 0) + 1);
+                const sorted = Object.entries(cnt).sort((a, b) => b[1] - a[1]);
+                const max = sorted[0]?.[1] || 1;
+                return sorted.map(([genre, count]) => {
+                  const gc = genreColor(genre);
+                  return (
+                    <div key={genre} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: gc.bg, color: gc.text, width: 48, textAlign: "center" }}>{genre}</span>
+                      <div style={{ flex: 1, background: C.surface2, borderRadius: 4, height: 6 }}>
+                        <div style={{ width: `${(count / max) * 100}%`, background: gc.text, height: 6, borderRadius: 4 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: C.textDim, width: 20, textAlign: "right" }}>{count}</span>
+                    </div>
+                  );
+                });
+              })()}
+            </StatCard>
+          </div>
+        )}
+
+        {/* ══════ TAB: 카페 찾기 ══════ */}
+        {activeTab === "cafe" && (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 56, marginBottom: 12 }}>🗺</div>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>주변 보드게임 카페 찾기</div>
+              <div style={{ color: C.textSub, fontSize: 13, marginBottom: 24 }}>지도 앱에서 근처 보드게임 카페를 검색해보세요</div>
+              <div style={{ display: "grid", gap: 10, maxWidth: 280, margin: "0 auto" }}>
+                {[
+                  { label: "🟡 카카오맵으로 검색", href: "https://map.kakao.com/?q=보드게임카페", bg: "#f59e0b", color: "#1c1917" },
+                  { label: "🌐 구글맵으로 검색", href: "https://www.google.com/maps/search/보드게임카페", bg: "#3b82f6", color: "#fff" },
+                  { label: "🟢 네이버지도로 검색", href: "https://map.naver.com/v5/search/보드게임카페", bg: "#22c55e", color: "#fff" },
+                ].map((btn) => (
+                  <a key={btn.label} href={btn.href} target="_blank" rel="noopener noreferrer"
+                    style={{ display: "block", padding: "12px 0", borderRadius: 10, fontWeight: 700, fontSize: 14, background: btn.bg, color: btn.color, textDecoration: "none", transition: "opacity .15s" }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = ".85"}
+                    onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                  >{btn.label}</a>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: C.accent }}>💡 방문 전 체크리스트</div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {["원하는 게임 보유 여부 사전 문의", "인원수에 맞는 테이블·예약 확인", "시간제 요금 & 음료 정책 확인", "초보자는 직원 설명 요청 가능", "앱에서 순번 신청 가능 여부 확인"].map((tip, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: C.textSub }}>
+                    <span style={{ color: C.accent }}>✓</span><span>{tip}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🎲 오늘 뭐 할까요?</div>
+              <div style={{ color: C.textDim, fontSize: 12, marginBottom: 12 }}>아직 적게 플레이한 게임 추천</div>
+              {[...games].sort((a, b) => (stats.gameStats[a.id]?.plays || 0) - (stats.gameStats[b.id]?.plays || 0)).slice(0, 3).map((game) => {
+                const plays = stats.gameStats[game.id]?.plays || 0;
+                const gc = genreColor(game.genre);
+                return (
+                  <div key={game.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.border}`, cursor: "pointer" }}
+                    onClick={() => { setSelectedGame(game); setActiveTab("library"); }}>
+                    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: gc.bg, color: gc.text }}>{game.genre}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{game.name}</div>
+                      <div style={{ fontSize: 11, color: C.textDim }}>👥 {game.minPlayers}–{game.maxPlayers}인 · ⏱ {game.duration}분</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: C.textDim }}>{plays}번 플레이</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* ══ 게임 상세 모달 ══ */}
+      {selectedGame && (
+        <Modal title={selectedGame.name} onClose={() => setSelectedGame(null)}>
+          <GameDetail
+            game={selectedGame}
+            plays={stats.gameStats[selectedGame.id]?.plays || 0}
+            history={history.filter(h => h.gameId === selectedGame.id)}
+            onEdit={() => { setEditingGame(selectedGame); setSelectedGame(null); }}
+            onAddHistory={() => { setShowAddHistory(true); setSelectedGame(null); }}
+          />
+        </Modal>
+      )}
+
+      {/* ══ 게임 추가/수정 모달 ══ */}
+      {(showAddGame || editingGame) && (
+        <Modal title={editingGame ? "게임 수정" : "게임 추가"} onClose={() => { setShowAddGame(false); setEditingGame(null); }}>
+          <GameForm game={editingGame} apiKey={apiKey} onSave={editingGame ? updateGame : addGame} onClose={() => { setShowAddGame(false); setEditingGame(null); }} onOpenSettings={() => setShowSettings(true)} />
+        </Modal>
+      )}
+
+      {/* ══ AI 설정 모달 ══ */}
+      {showSettings && (
+        <Modal title="⚙️ AI 검색 설정" onClose={() => setShowSettings(false)}>
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{ background: C.accentDim, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+              <b style={{ color: C.accent }}>🤖 AI 게임 검색</b>이란?<br/>
+              Claude API를 사용해 어떤 보드게임이든 이름만 입력하면<br/>
+              한국어 설명·목표·플레이 방법을 자동으로 채워줍니다.
+            </div>
+            <Field label="Anthropic API 키">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="sk-ant-api03-..."
+                style={{ width: "100%", padding: "9px 12px", background: C.surface2, border: `1px solid ${apiKey ? C.accent : C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "monospace" }}
+              />
+            </Field>
+            <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.7 }}>
+              • API 키는 <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" style={{ color: C.accent }}>console.anthropic.com</a>에서 발급<br/>
+              • 키는 이 세션에서만 유지되며 외부로 전송되지 않습니다<br/>
+              • claude-haiku 모델 사용 (검색 1회당 약 $0.001)
+            </div>
+            {apiKey && (
+              <div style={{ padding: "8px 12px", background: "#d1fae5", borderRadius: 8, fontSize: 12, color: "#065f46", fontWeight: 600 }}>
+                ✅ API 키가 설정되었습니다. 게임 추가 시 🤖 AI 검색을 사용하세요!
+              </div>
+            )}
+            <button onClick={() => setShowSettings(false)}
+              style={{ padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+              확인
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ══ 플레이 기록 추가 모달 ══ */}
+      {showAddHistory && (
+        <Modal title="플레이 기록 추가" onClose={() => setShowAddHistory(false)}>
+          <HistoryForm games={games} onSave={addHistory} onClose={() => setShowAddHistory(false)} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── 게임 상세 ──────────────────────────────────
+function GameDetail({ game, plays, history, onEdit, onAddHistory }) {
+  const [tab, setTab] = useState("info");
+  const gc = genreColor(game.genre);
+  const dc = DIFFICULTY_COLORS[game.difficulty] || DIFFICULTY_COLORS["보통"];
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 14 }}>
+        {game.imageUrl ? (
+          <img src={game.imageUrl} alt={game.name}
+            style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.border}`, flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 80, height: 80, borderRadius: 10, background: C.surface2, border: `1px solid ${C.border}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32 }}>🎲</div>
+        )}
+        <div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+            <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: gc.bg, color: gc.text, fontWeight: 600 }}>{game.genre}</span>
+            <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: dc.bg, color: dc.text, border: `1px solid ${dc.border}` }}>{game.difficulty}</span>
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {(game.tags || []).map(t => (
+              <span key={t} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: C.surface2, color: C.textDim, border: `1px solid ${C.border}` }}>#{t}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
+        {[
+          { value: `${game.minPlayers}–${game.maxPlayers}`, label: "인원" },
+          { value: `${game.duration}분`, label: "소요시간" },
+          { value: `${plays}회`, label: "플레이 횟수" },
+        ].map(s => (
+          <div key={s.label} style={{ background: C.surface2, borderRadius: 8, padding: "10px 0", textAlign: "center" }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: 14 }}>
+        {[{ id: "info", label: "게임 설명" }, { id: "how", label: "플레이 방법" }, { id: "history", label: "기록" }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "8px 14px", fontSize: 12, fontWeight: tab === t.id ? 700 : 400, color: tab === t.id ? C.accent : C.textDim,
+              borderBottom: `2px solid ${tab === t.id ? C.accent : "transparent"}`, background: "none", border: "none",
+              cursor: "pointer" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "info" && (
+        <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+          <p style={{ color: C.textSub, marginBottom: 12 }}>{game.description}</p>
+          {game.objective && (
+            <InfoSection label="🎯 목표">
+              <p style={{ color: C.textSub }}>{game.objective}</p>
+            </InfoSection>
+          )}
+          {game.components && (
+            <InfoSection label="📦 구성품">
+              <p style={{ color: C.textSub }}>{game.components}</p>
+            </InfoSection>
+          )}
+          {game.notes && (
+            <InfoSection label="📝 메모">
+              <p style={{ color: C.textSub, fontStyle: "italic" }}>{game.notes}</p>
+            </InfoSection>
+          )}
+          {game.videoUrl && (
+            <a href={game.videoUrl} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 8, background: "#dbeafe", border: "1px solid #93c5fd", color: "#1e40af", textDecoration: "none", fontSize: 13, marginTop: 4, fontWeight: 600 }}>
+              ▶ 설명 영상 보기
+            </a>
+          )}
+        </div>
+      )}
+
+      {tab === "how" && (
+        <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+          {game.howToPlay
+            ? <p style={{ color: C.textSub }}>{game.howToPlay}</p>
+            : <p style={{ color: C.textDim, fontStyle: "italic" }}>플레이 방법이 아직 입력되지 않았습니다.</p>
+          }
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div>
+          {history.length === 0
+            ? <p style={{ color: C.textDim, fontSize: 13, fontStyle: "italic" }}>아직 플레이 기록이 없어요.</p>
+            : [...history].sort((a, b) => new Date(b.date) - new Date(a.date)).map(h => (
+              <div key={h.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <span style={{ fontSize: 11, color: C.textDim }}>{h.date}</span>
+                  <div style={{ fontSize: 13, color: C.textSub, marginTop: 2 }}>{h.players.join(", ")}</div>
+                </div>
+                {h.winner && <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 600 }}>🏆 {h.winner}</span>}
+              </div>
+            ))
+          }
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+        <button onClick={onEdit}
+          style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.accent}`, background: "none", color: C.accent, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+          ✏️ 수정
+        </button>
+        <button onClick={onAddHistory}
+          style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+          🎮 기록 추가
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── 게임 폼 (로컬 DB + AI 검색) ─────────────────
+function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
+  const [form, setForm] = useState(game || {
+    name: "", genre: "전략", minPlayers: 2, maxPlayers: 4, duration: 60, difficulty: "보통",
+    description: "", objective: "", howToPlay: "", components: "", videoUrl: "", imageUrl: "", notes: "", tags: [],
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [tagsText, setTagsText] = useState((game?.tags || []).join(", "));
+
+  // 로컬 DB 검색 상태
+  const [localQuery, setLocalQuery] = useState("");
+  const [localResults, setLocalResults] = useState([]);
+
+  // AI 검색 상태
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  const handleLocalSearch = (q) => {
+    setLocalQuery(q);
+    if (!q.trim()) { setLocalResults([]); return; }
+    const lower = q.toLowerCase();
+    const results = BOARDGAME_LOCAL_DB.filter(g =>
+      g.name.includes(q) ||
+      g.englishName.toLowerCase().includes(lower) ||
+      g.description.includes(q) ||
+      (g.tags || []).some(t => t.includes(q)) ||
+      g.genre.includes(q)
+    ).slice(0, 8);
+    setLocalResults(results);
+  };
+
+  const handleLocalSelect = (item) => {
+    const duration = Math.round((item.minTime + item.maxTime) / 2);
+    setForm(f => ({
+      ...f,
+      name: item.name,
+      minPlayers: item.minPlayers,
+      maxPlayers: item.maxPlayers,
+      duration,
+      description: item.description,
+      genre: GENRES.includes(item.genre) ? item.genre : "전략",
+      difficulty: mapDifficulty(item.difficulty),
+    }));
+    setTagsText((item.tags || []).join(", "));
+    setLocalResults([]);
+    setLocalQuery("");
+  };
+
+  const handleAiSearch = async () => {
+    const query = localQuery.trim() || form.name.trim();
+    if (!query) return alert("게임 이름을 먼저 입력해주세요.");
+    if (!apiKey) { onOpenSettings?.(); return; }
+    setAiLoading(true);
+    setAiError("");
+    setLocalResults([]);
+    try {
+      const result = await aiSearchGame(query, apiKey);
+      setForm(f => ({
+        ...f,
+        name: result.name || f.name,
+        minPlayers: result.minPlayers || f.minPlayers,
+        maxPlayers: result.maxPlayers || f.maxPlayers,
+        duration: result.duration || f.duration,
+        genre: GENRES.includes(result.genre) ? result.genre : f.genre,
+        difficulty: DIFFICULTIES.includes(result.difficulty) ? result.difficulty : f.difficulty,
+        description: result.description || f.description,
+        objective: result.objective || f.objective,
+        howToPlay: result.howToPlay || f.howToPlay,
+        components: result.components || f.components,
+      }));
+      setTagsText((result.tags || []).join(", "));
+      setLocalQuery("");
+    } catch (e) {
+      setAiError(e.message || "AI 검색 실패");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (!form.name.trim()) return alert("게임 이름을 입력해주세요.");
+    onSave({ ...form, tags: tagsText.split(",").map(t => t.trim()).filter(Boolean) });
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+
+      {/* ── 검색 섹션 ── */}
+      <div style={{ background: C.accentDim, border: `1px solid ${C.accent}33`, borderRadius: 10, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>🔍 게임 검색</div>
+          <div style={{ fontSize: 10, color: C.textDim }}>
+            {apiKey ? <span style={{ color: "#16a34a", fontWeight: 600 }}>🤖 AI 검색 사용 가능</span> : <span>AI 검색: <button onClick={onOpenSettings} style={{ background: "none", border: "none", color: C.accent, fontSize: 10, cursor: "pointer", padding: 0, fontWeight: 600 }}>API 키 설정 →</button></span>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ position: "relative", flex: 1 }}>
+          <input
+            value={localQuery}
+            onChange={e => handleLocalSearch(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && apiKey && handleAiSearch()}
+            placeholder="게임 이름 검색 (예: 카탄, Wingspan...)"
+            style={{ width: "100%", padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text, outline: "none", boxSizing: "border-box" }}
+          />
+          {localResults.length > 0 && (
+            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.surface, zIndex: 100, boxShadow: "0 4px 16px #0002" }}>
+              {localResults.map((r, i) => (
+                <div key={r.id} onClick={() => handleLocalSelect(r)}
+                  style={{
+                    padding: "9px 12px", fontSize: 12, cursor: "pointer",
+                    borderBottom: i < localResults.length - 1 ? `1px solid ${C.border}` : "none",
+                    background: C.surface, display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.surface2}
+                  onMouseLeave={e => e.currentTarget.style.background = C.surface}
+                >
+                  <div>
+                    <span style={{ fontWeight: 600, color: C.text }}>{r.name}</span>
+                    <span style={{ color: C.textDim, fontSize: 11, marginLeft: 6 }}>{r.englishName}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.surface2, color: C.textDim, whiteSpace: "nowrap" }}>
+                      {r.minPlayers}–{r.maxPlayers}인
+                    </span>
+                    <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, background: C.accentDim, color: C.accent, whiteSpace: "nowrap" }}>
+                      {r.genre}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+          <button onClick={handleAiSearch} disabled={aiLoading}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: apiKey ? C.accent : C.border, color: apiKey ? "#fff" : C.textDim, fontSize: 12, fontWeight: 700, cursor: apiKey ? "pointer" : "default", whiteSpace: "nowrap", opacity: aiLoading ? 0.6 : 1, flexShrink: 0 }}>
+            {aiLoading ? "검색 중…" : "🤖 AI 검색"}
+          </button>
+        </div>
+        {aiLoading && <div style={{ fontSize: 11, color: C.accent, marginTop: 8 }}>⏳ AI가 게임 정보를 찾는 중...</div>}
+        {aiError && <div style={{ fontSize: 11, color: "#991b1b", marginTop: 8 }}>⚠️ {aiError}</div>}
+        <div style={{ fontSize: 10, color: C.textDim, marginTop: 6 }}>
+          DB에서 선택하거나 🤖 AI 검색으로 어떤 게임이든 한국어로 자동 입력할 수 있어요.
+        </div>
+      </div>
+
+      {/* 이미지 미리보기 */}
+      {form.imageUrl && (
+        <div style={{ display: "flex", gap: 12, alignItems: "center", background: C.surface2, borderRadius: 8, padding: 10 }}>
+          <img src={form.imageUrl} alt="게임 이미지" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.border}` }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 3 }}>게임 이미지</div>
+            <button onClick={() => set("imageUrl", "")} style={{ fontSize: 11, color: "#991b1b", background: "none", border: "none", cursor: "pointer", padding: 0 }}>✕ 제거</button>
+          </div>
+        </div>
+      )}
+
+      <Field label="게임 이름 *">
+        <Input value={form.name} onChange={e => set("name", e.target.value)} placeholder="예: 카탄" />
+      </Field>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <Field label="장르">
+          <Select value={form.genre} onChange={e => set("genre", e.target.value)}>
+            {GENRES.map(g => <option key={g}>{g}</option>)}
+          </Select>
+        </Field>
+        <Field label="난이도">
+          <Select value={form.difficulty} onChange={e => set("difficulty", e.target.value)}>
+            {DIFFICULTIES.map(d => <option key={d}>{d}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <Field label="최소 인원"><Input type="number" min="1" max="20" value={form.minPlayers} onChange={e => set("minPlayers", Number(e.target.value))} /></Field>
+        <Field label="최대 인원"><Input type="number" min="1" max="20" value={form.maxPlayers} onChange={e => set("maxPlayers", Number(e.target.value))} /></Field>
+        <Field label="시간 (분)"><Input type="number" min="5" max="600" value={form.duration} onChange={e => set("duration", Number(e.target.value))} /></Field>
+      </div>
+      <Field label="게임 소개">
+        <Textarea value={form.description} onChange={e => set("description", e.target.value)} rows={2} placeholder="한 줄 소개" />
+      </Field>
+      <Field label="🎯 게임 목표">
+        <Textarea value={form.objective} onChange={e => set("objective", e.target.value)} rows={2} placeholder="어떻게 이기는 게임인가요?" />
+      </Field>
+      <Field label="📖 플레이 방법">
+        <Textarea value={form.howToPlay} onChange={e => set("howToPlay", e.target.value)} rows={3} placeholder="게임 진행 방식, 턴 구조, 핵심 메커니즘 등" />
+      </Field>
+      <Field label="📦 구성품">
+        <Textarea value={form.components} onChange={e => set("components", e.target.value)} rows={2} placeholder="카드, 타일, 주사위 등 구성품 목록" />
+      </Field>
+      <Field label="▶ 설명 영상 URL">
+        <Input value={form.videoUrl} onChange={e => set("videoUrl", e.target.value)} placeholder="https://youtube.com/..." />
+      </Field>
+      <Field label="🖼 이미지 URL">
+        <Input value={form.imageUrl} onChange={e => set("imageUrl", e.target.value)} placeholder="https://..." />
+      </Field>
+      <Field label="태그 (쉼표 구분)">
+        <Input value={tagsText} onChange={e => setTagsText(e.target.value)} placeholder="입문, 협력, 장시간 ..." />
+      </Field>
+      <Field label="📝 개인 메모">
+        <Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="하우스 룰, 팁, 느낀 점 등" />
+      </Field>
+      <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
+        <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>취소</button>
+        <button onClick={handleSave} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>저장</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 플레이 기록 폼 ─────────────────────────────
+function HistoryForm({ games, onSave, onClose }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ gameId: games[0]?.id || "", date: today, playersText: "", winner: "", notes: "" });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const players = form.playersText.split(",").map(p => p.trim()).filter(Boolean);
+
+  const handleSave = () => {
+    if (!form.gameId) return alert("게임을 선택해주세요.");
+    if (players.length === 0) return alert("참가자를 입력해주세요.");
+    onSave({ gameId: Number(form.gameId), date: form.date, players, winner: form.winner, notes: form.notes });
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <Field label="게임 *">
+        <Select value={form.gameId} onChange={e => set("gameId", e.target.value)}>
+          {games.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="날짜">
+        <Input type="date" value={form.date} onChange={e => set("date", e.target.value)} />
+      </Field>
+      <Field label="참가자 (쉼표 구분) *">
+        <Input value={form.playersText} onChange={e => set("playersText", e.target.value)} placeholder="예: sun, 민준, 서연" />
+        {players.length > 0 && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+            {players.map(p => <span key={p} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 10, background: C.accentDim, color: C.accent, border: `1px solid ${C.accent}44` }}>{p}</span>)}
+          </div>
+        )}
+      </Field>
+      <Field label="우승자">
+        <Select value={form.winner} onChange={e => set("winner", e.target.value)}>
+          <option value="">없음 / 협력 게임</option>
+          {players.map(p => <option key={p} value={p}>{p}</option>)}
+        </Select>
+      </Field>
+      <Field label="메모">
+        <Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="이번 게임 후기" />
+      </Field>
+      <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
+        <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>취소</button>
+        <button onClick={handleSave} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>저장</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 공통 컴포넌트 ──────────────────────────────
+function Modal({ title, children, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000bb", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50, padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: "16px 16px 12px 12px", width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 16 }}>{title}</span>
+          <button onClick={onClose} style={{ background: C.surface2, border: "none", borderRadius: "50%", width: 28, height: 28, color: C.textSub, cursor: "pointer", fontSize: 14 }}>✕</button>
+        </div>
+        <div style={{ padding: 20, overflowY: "auto" }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Btn({ children, onClick, size = "md" }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ padding: size === "sm" ? "6px 12px" : "8px 16px", borderRadius: 8, border: "none", background: hover ? C.accentHover : C.accent, color: "#fff", fontWeight: 600, fontSize: size === "sm" ? 12 : 13, cursor: "pointer", transition: "background .15s", whiteSpace: "nowrap" }}>
+      {children}
+    </button>
+  );
+}
+
+function IconBtn({ children, onClick, title, danger }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button onClick={onClick} title={title}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ padding: "6px", borderRadius: 6, border: "none", background: hover ? (danger ? "#7f1d1d44" : C.accentDim) : "none", cursor: "pointer", fontSize: 14 }}>
+      {children}
+    </button>
+  );
+}
+
+function StatCard({ title, children }) {
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 18 }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function InfoSection({ label, children }) {
+  return (
+    <div style={{ marginBottom: 12, padding: "10px 12px", background: C.surface2, borderRadius: 8, borderLeft: `3px solid ${C.accent}` }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textSub, marginBottom: 5 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Input(props) {
+  return (
+    <input {...props}
+      style={{ width: "100%", padding: "9px 12px", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+  );
+}
+
+function Select({ children, ...props }) {
+  return (
+    <select {...props}
+      style={{ width: "100%", padding: "9px 12px", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box" }}>
+      {children}
+    </select>
+  );
+}
+
+function Textarea(props) {
+  return (
+    <textarea {...props}
+      style={{ width: "100%", padding: "9px 12px", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+  );
+}
+
+
+// 앱 마운트
+const container = document.getElementById('root');
+const root = ReactDOM.createRoot(container);
+root.render(React.createElement(BoardGameApp, null));
+document.getElementById('loading').style.display = 'none';
+  </script>
+
+</body>
+</html>
