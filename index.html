@@ -274,23 +274,37 @@ async function aiSearchGame(gameName, apiKey) {
 genre는 반드시 다음 중 하나: 전략, 파티, 협력, 추리, 경제, 카드, RPG, 추상, 패밀리, 기타
 difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려움, 매우 어려움`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-allow-browser": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      mode: "cors",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-allow-browser": "true",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+  } catch (networkErr) {
+    throw new Error(
+      "네트워크 오류: Anthropic API에 연결할 수 없습니다.\n" +
+      "• 인터넷 연결을 확인해주세요\n" +
+      "• 브라우저 확장 프로그램(광고차단기 등)이 요청을 막고 있을 수 있습니다\n" +
+      "• 원인: " + networkErr.message
+    );
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API 오류 (${res.status})`);
+    const status = res.status;
+    if (status === 401) throw new Error("API 키가 올바르지 않습니다. 설정에서 키를 다시 확인해주세요.");
+    if (status === 429) throw new Error("API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.");
+    throw new Error(err?.error?.message || `API 오류 (${status})`);
   }
   const data = await res.json();
   const text = data.content?.[0]?.text || "";
@@ -323,7 +337,9 @@ function BoardGameApp() {
   const [editingGame, setEditingGame] = useState(null);
   const [selectedGame, setSelectedGame] = useState(null);
   const [showAddHistory, setShowAddHistory] = useState(false);
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(() => {
+    try { return localStorage.getItem('bg_apiKey') || ""; } catch { return ""; }
+  });
   const [showSettings, setShowSettings] = useState(false);
 
   const fileInputRef = useRef(null);
@@ -335,6 +351,9 @@ function BoardGameApp() {
   useEffect(() => {
     try { localStorage.setItem('bg_history', JSON.stringify(history)); } catch {}
   }, [history]);
+  useEffect(() => {
+    try { localStorage.setItem('bg_apiKey', apiKey); } catch {}
+  }, [apiKey]);
 
   const filteredGames = useMemo(() => games.filter((g) => {
     const q = searchQuery.toLowerCase();
