@@ -325,6 +325,31 @@ difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려
   return JSON.parse(match[0]);
 }
 
+// ─── 이미지 리사이즈 & 압축 (localStorage 용량 절약) ────
+function compressImage(file, maxSize = 200, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; } }
+        else { if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize; } }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ─── Wikipedia 이미지 자동 로딩 ──────────────────────
 async function fetchGameImage(gameName) {
   try {
@@ -1302,7 +1327,7 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
             <img src={form.imageUrl} alt="게임 이미지" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}`, flexShrink: 0 }}
               onError={e => { e.target.style.display='none'; }} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.imageUrl}</div>
+              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.imageUrl?.startsWith('data:') ? '📷 직접 첨부한 사진' : form.imageUrl}</div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => set("imageUrl", "")} style={{ fontSize: 11, color: "#991b1b", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 5, cursor: "pointer", padding: "3px 8px" }}>✕ 제거</button>
               </div>
@@ -1310,16 +1335,32 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
           </div>
         ) : (
           <div style={{ color: C.textDim, fontSize: 12, marginBottom: 8 }}>
-            {imgLoading ? "" : "AI·DB 검색 시 자동으로 불러옵니다. 직접 URL을 입력할 수도 있어요."}
+            {imgLoading ? "" : "AI·DB 검색 시 자동으로 불러옵니다. 📷 사진 첨부 또는 URL 직접 입력도 가능해요."}
           </div>
         )}
         <div style={{ display: "flex", gap: 6, marginTop: form.imageUrl ? 8 : 0 }}>
           <input
-            value={form.imageUrl}
-            onChange={e => set("imageUrl", e.target.value)}
+            value={form.imageUrl?.startsWith('data:') ? '📷 첨부된 사진' : (form.imageUrl || '')}
+            onChange={e => { if (!form.imageUrl?.startsWith('data:')) set("imageUrl", e.target.value); }}
             placeholder="이미지 URL 직접 입력 (https://...)"
+            readOnly={form.imageUrl?.startsWith('data:')}
             style={{ flex: 1, padding: "7px 10px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, color: C.text, outline: "none" }}
           />
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "7px 10px", background: C.accent, color: "#fff", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+            📷 사진
+            <input type="file" accept="image/*" style={{ display: "none" }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  setImgLoading(true);
+                  const dataUrl = await compressImage(file);
+                  set("imageUrl", dataUrl);
+                } catch { alert("이미지 처리에 실패했어요."); }
+                finally { setImgLoading(false); e.target.value = ''; }
+              }}
+            />
+          </label>
         </div>
       </div>
 
