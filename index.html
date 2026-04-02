@@ -10,12 +10,13 @@
   <meta name="theme-color" content="#c0392b" />
   <title>🎲 보드게임 매니저</title>
 
-    <!-- PWA Manifest -->
-      <link rel="manifest" href="manifest.json" />
-        <!-- iOS 아이콘 -->
-          <link rel="apple-touch-icon" href="icon-180.png" />
-            <!-- Android 아이콘 fallback -->
-              <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+  <!-- iOS 아이콘 -->
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <!-- Android 아이콘 fallback -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+
   <!-- 로딩 스타일 -->
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -351,6 +352,14 @@ function BoardGameApp() {
     try { return localStorage.getItem('bg_apiKey') || ""; } catch { return ""; }
   });
   const [showSettings, setShowSettings] = useState(false);
+  const [wishlist, setWishlist] = useState(() => {
+    try { const s = localStorage.getItem('bg_wishlist'); return s ? JSON.parse(s) : []; } catch { return []; }
+  });
+  const [showAddWishlist, setShowAddWishlist] = useState(false);
+  const [showTimer, setShowTimer] = useState(false);
+  const [timerGame, setTimerGame] = useState(null);
+  const [showScoreSheet, setShowScoreSheet] = useState(false);
+  const [scoreSheetGame, setScoreSheetGame] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -364,6 +373,9 @@ function BoardGameApp() {
   useEffect(() => {
     try { localStorage.setItem('bg_apiKey', apiKey); } catch {}
   }, [apiKey]);
+  useEffect(() => {
+    try { localStorage.setItem('bg_wishlist', JSON.stringify(wishlist)); } catch {}
+  }, [wishlist]);
 
   const filteredGames = useMemo(() => games.filter((g) => {
     const q = searchQuery.toLowerCase();
@@ -426,6 +438,8 @@ function BoardGameApp() {
   const addHistory = (r) => { setHistory((p) => [...p, { ...r, id: nextHistoryId++ }]); setShowAddHistory(false); };
   const deleteHistory = (id) => { if (window.confirm("기록을 삭제할까요?")) setHistory((p) => p.filter((h) => h.id !== id)); };
   const getGame = (id) => games.find((g) => g.id === id);
+  const addWishlistItem = (item) => { setWishlist(p => [...p, { ...item, id: Date.now() }]); setShowAddWishlist(false); };
+  const deleteWishlistItem = (id) => { if (window.confirm("위시리스트에서 삭제할까요?")) setWishlist(p => p.filter(w => w.id !== id)); };
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', sans-serif", color: C.text }}>
@@ -433,11 +447,11 @@ function BoardGameApp() {
       {/* ══ 헤더 ══ */}
       <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 30 }}>
         <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🎲</div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.3px" }}>보드게임 매니저</div>
-              <div style={{ fontSize: 11, color: C.textDim }}>{games.length}개 게임 · {history.length}번 플레이</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflow: "hidden" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🎲</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>보드게임 매니저</div>
+              <div style={{ fontSize: 11, color: C.textDim, whiteSpace: "nowrap" }}>{games.length}개 게임 · {history.length}번 플레이</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -454,22 +468,24 @@ function BoardGameApp() {
 
       {/* ══ 탭 ══ */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 60, zIndex: 20 }}>
-        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex" }}>
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
           {[
-            { id: "library", label: "🎮 게임 목록" },
-            { id: "history", label: "📋 플레이 기록" },
-            { id: "stats",   label: "📊 통계" },
-            { id: "cafe",    label: "🗺 카페 찾기" },
+            { id: "library",  label: "🎮 게임 목록" },
+            { id: "history",  label: "📋 플레이 기록" },
+            { id: "stats",    label: "📊 통계" },
+            { id: "wishlist", label: "🎁 위시리스트" },
+            { id: "cafe",     label: "🗺 카페 찾기" },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                flex: 1, padding: "12px 8px", fontSize: 13, fontWeight: activeTab === tab.id ? 700 : 400,
+                flex: "0 0 auto", padding: "12px 14px", fontSize: 13, fontWeight: activeTab === tab.id ? 700 : 400,
                 color: activeTab === tab.id ? C.accent : C.textSub,
                 borderBottom: `2px solid ${activeTab === tab.id ? C.accent : "transparent"}`,
                 background: "none", border: "none",
                 cursor: "pointer", transition: "all .2s",
+                whiteSpace: "nowrap",
               }}
             >
               {tab.label}
@@ -606,6 +622,9 @@ function BoardGameApp() {
                           {game && <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: gc.bg, color: gc.text }}>{game.genre}</span>}
                           <span style={{ fontWeight: 700, fontSize: 14 }}>{game?.name || "삭제된 게임"}</span>
                           <span style={{ fontSize: 11, color: C.textDim }}>{record.date}</span>
+                          {record.rating > 0 && (
+                            <span style={{ fontSize: 11, color: "#f59e0b", letterSpacing: "-1px" }}>{"★".repeat(record.rating)}{"☆".repeat(5 - record.rating)}</span>
+                          )}
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: record.notes ? 8 : 0 }}>
                           {record.players.map((p) => (
@@ -719,6 +738,66 @@ function BoardGameApp() {
           </div>
         )}
 
+        {/* ══════ TAB: 위시리스트 ══════ */}
+        {activeTab === "wishlist" && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>🎁 위시리스트</span>
+                <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>사고 싶은 게임 목록 · 가격 비교 링크 포함</div>
+              </div>
+              <Btn onClick={() => setShowAddWishlist(true)}>+ 추가</Btn>
+            </div>
+            {wishlist.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "60px 0", color: C.textDim }}>
+                <div style={{ fontSize: 48 }}>🎁</div>
+                <p style={{ marginTop: 12, fontSize: 14 }}>원하는 게임을 추가해보세요!</p>
+                <p style={{ marginTop: 6, fontSize: 12 }}>쿠팡·네이버 쇼핑 가격 비교 링크가 생성됩니다</p>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {wishlist.map(item => {
+                  const priorityColors = {
+                    "관심":  { bg: "#f3f4f6", text: "#6b7280",  border: "#d1d5db" },
+                    "원함":  { bg: "#dbeafe", text: "#1d4ed8",  border: "#93c5fd" },
+                    "꼭필요":{ bg: "#fee2e2", text: "#991b1b",  border: "#fca5a5" },
+                  };
+                  const pc = priorityColors[item.priority] || priorityColors["관심"];
+                  const encoded = encodeURIComponent(item.name + " 보드게임");
+                  return (
+                    <div key={item.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: pc.bg, color: pc.text, border: `1px solid ${pc.border}`, fontWeight: 700, flexShrink: 0 }}>{item.priority}</span>
+                            <span style={{ fontWeight: 700, fontSize: 15 }}>{item.name}</span>
+                          </div>
+                          {item.notes && <p style={{ fontSize: 12, color: C.textDim, marginBottom: 10, lineHeight: 1.5 }}>{item.notes}</p>}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <a href={`https://www.coupang.com/np/search?q=${encoded}`} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 6, background: "#fff8e1", border: "1px solid #ffd54f", color: "#e65100", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                              🛒 쿠팡
+                            </a>
+                            <a href={`https://search.shopping.naver.com/search/all?query=${encoded}`} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 6, background: "#e8f5e9", border: "1px solid #81c784", color: "#1b5e20", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                              🟢 네이버 쇼핑
+                            </a>
+                            <a href={`https://www.boardgamegeek.com/search/boardgame?q=${encodeURIComponent(item.name)}`} target="_blank" rel="noopener noreferrer"
+                              style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 6, background: "#ede9fe", border: "1px solid #c4b5fd", color: "#5b21b6", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                              📋 BGG
+                            </a>
+                          </div>
+                        </div>
+                        <IconBtn onClick={() => deleteWishlistItem(item.id)} danger title="삭제">🗑️</IconBtn>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ══════ TAB: 카페 찾기 ══════ */}
         {activeTab === "cafe" && (
           <div style={{ display: "grid", gap: 16 }}>
@@ -784,6 +863,8 @@ function BoardGameApp() {
             history={history.filter(h => h.gameId === selectedGame.id)}
             onEdit={() => { setEditingGame(selectedGame); setSelectedGame(null); }}
             onAddHistory={() => { setShowAddHistory(true); setSelectedGame(null); }}
+            onOpenTimer={() => { setTimerGame(selectedGame); setShowTimer(true); setSelectedGame(null); }}
+            onOpenScoreSheet={() => { setScoreSheetGame(selectedGame); setShowScoreSheet(true); setSelectedGame(null); }}
           />
         </Modal>
       )}
@@ -837,12 +918,44 @@ function BoardGameApp() {
           <HistoryForm games={games} onSave={addHistory} onClose={() => setShowAddHistory(false)} />
         </Modal>
       )}
+
+      {/* ══ 위시리스트 추가 모달 ══ */}
+      {showAddWishlist && (
+        <Modal title="🎁 위시리스트 추가" onClose={() => setShowAddWishlist(false)}>
+          <WishlistForm onSave={addWishlistItem} onClose={() => setShowAddWishlist(false)} />
+        </Modal>
+      )}
+
+      {/* ══ 타이머 모달 ══ */}
+      {showTimer && (
+        <TimerModal gameName={timerGame?.name} onClose={() => { setShowTimer(false); setTimerGame(null); }} />
+      )}
+
+      {/* ══ 점수판 모달 ══ */}
+      {showScoreSheet && (
+        <ScoreSheetModal gameName={scoreSheetGame?.name} onClose={() => { setShowScoreSheet(false); setScoreSheetGame(null); }} />
+      )}
+
+      {/* ══ 타이머 플로팅 버튼 ══ */}
+      <button
+        onClick={() => setShowTimer(true)}
+        title="타이머 열기"
+        style={{
+          position: "fixed", bottom: 24, right: 20, width: 48, height: 48,
+          borderRadius: "50%", border: "none",
+          background: C.accent, color: "#fff", fontSize: 20,
+          cursor: "pointer", zIndex: 40,
+          boxShadow: "0 4px 16px #0003",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+        ⏱
+      </button>
     </div>
   );
 }
 
 // ── 게임 상세 ──────────────────────────────────
-function GameDetail({ game, plays, history, onEdit, onAddHistory }) {
+function GameDetail({ game, plays, history, onEdit, onAddHistory, onOpenTimer, onOpenScoreSheet }) {
   const [tab, setTab] = useState("info");
   const gc = genreColor(game.genre);
   const dc = DIFFICULTY_COLORS[game.difficulty] || DIFFICULTY_COLORS["보통"];
@@ -946,15 +1059,27 @@ function GameDetail({ game, plays, history, onEdit, onAddHistory }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-        <button onClick={onEdit}
-          style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.accent}`, background: "none", color: C.accent, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-          ✏️ 수정
-        </button>
-        <button onClick={onAddHistory}
-          style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-          🎮 기록 추가
-        </button>
+      <div style={{ display: "grid", gap: 8, marginTop: 20 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onEdit}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.accent}`, background: "none", color: C.accent, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            ✏️ 수정
+          </button>
+          <button onClick={onAddHistory}
+            style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            🎮 기록 추가
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onOpenTimer}
+            style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid #f59e0b`, background: "#fff8e1", color: "#b45309", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            ⏱ 타이머
+          </button>
+          <button onClick={onOpenScoreSheet}
+            style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid #7c3aed`, background: "#f5f3ff", color: "#5b21b6", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+            📝 점수판
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1171,7 +1296,7 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
 // ── 플레이 기록 폼 ─────────────────────────────
 function HistoryForm({ games, onSave, onClose }) {
   const today = new Date().toISOString().split("T")[0];
-  const [form, setForm] = useState({ gameId: games[0]?.id || "", date: today, playersText: "", winner: "", notes: "" });
+  const [form, setForm] = useState({ gameId: games[0]?.id || "", date: today, playersText: "", winner: "", rating: 0, notes: "" });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const players = form.playersText.split(",").map(p => p.trim()).filter(Boolean);
 
@@ -1205,14 +1330,319 @@ function HistoryForm({ games, onSave, onClose }) {
           {players.map(p => <option key={p} value={p}>{p}</option>)}
         </Select>
       </Field>
-      <Field label="메모">
-        <Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="이번 게임 후기" />
+      <Field label="별점">
+        <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+          {[1,2,3,4,5].map(s => (
+            <button key={s} onClick={() => set("rating", form.rating === s ? 0 : s)}
+              style={{ fontSize: 24, background: "none", border: "none", cursor: "pointer", padding: "2px 3px", lineHeight: 1, color: s <= form.rating ? "#f59e0b" : "#d1d5db" }}>
+              {s <= form.rating ? "★" : "☆"}
+            </button>
+          ))}
+          {form.rating > 0 && <span style={{ fontSize: 11, color: C.textDim, marginLeft: 4 }}>({form.rating}점)</span>}
+        </div>
+      </Field>
+      <Field label="한줄 감상">
+        <Input value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="이번 게임 짧은 후기" />
       </Field>
       <div style={{ display: "flex", gap: 8, paddingTop: 4 }}>
         <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>취소</button>
         <button onClick={handleSave} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>저장</button>
       </div>
     </div>
+  );
+}
+
+// ── 위시리스트 폼 ──────────────────────────────
+function WishlistForm({ onSave, onClose }) {
+  const [form, setForm] = useState({ name: "", priority: "원함", notes: "" });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const handleSave = () => {
+    if (!form.name.trim()) return alert("게임 이름을 입력해주세요.");
+    onSave(form);
+  };
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <Field label="게임 이름 *">
+        <Input value={form.name} onChange={e => set("name", e.target.value)} placeholder="예: 글룸헤이븐, Root..." />
+      </Field>
+      <Field label="우선순위">
+        <div style={{ display: "flex", gap: 6 }}>
+          {["관심", "원함", "꼭필요"].map(p => {
+            const colors = { "관심": "#6b7280", "원함": "#1d4ed8", "꼭필요": "#991b1b" };
+            const bgs = { "관심": "#f3f4f6", "원함": "#dbeafe", "꼭필요": "#fee2e2" };
+            const active = form.priority === p;
+            return (
+              <button key={p} onClick={() => set("priority", p)}
+                style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: `1.5px solid ${active ? colors[p] : C.border}`, background: active ? bgs[p] : C.surface2, color: active ? colors[p] : C.textSub, fontWeight: active ? 700 : 400, fontSize: 13, cursor: "pointer" }}>
+                {p}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      <Field label="메모 (예산, 이유 등)">
+        <Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="가격 예산, 같이 할 인원, 원하는 이유 등..." />
+      </Field>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>취소</button>
+        <button onClick={handleSave} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>추가</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 타이머 모달 ──────────────────────────────
+function TimerModal({ gameName, onClose }) {
+  const PRESETS = [
+    { label: "30초", seconds: 30 },
+    { label: "1분 (우봉고)", seconds: 60 },
+    { label: "1분 30초", seconds: 90 },
+    { label: "2분", seconds: 120 },
+    { label: "3분", seconds: 180 },
+    { label: "5분", seconds: 300 },
+  ];
+  const [selected, setSelected] = useState(60);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [running, setRunning] = useState(false);
+  const [custom, setCustom] = useState("");
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft(t => {
+          if (t <= 1) {
+            setRunning(false);
+            clearInterval(intervalRef.current);
+            if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const handleStart = () => { if (timeLeft > 0) setRunning(true); };
+  const handlePause = () => { setRunning(false); clearInterval(intervalRef.current); };
+  const handleReset = () => { setRunning(false); clearInterval(intervalRef.current); setTimeLeft(selected); };
+  const handleSelect = (s) => { setSelected(s); setTimeLeft(s); setRunning(false); clearInterval(intervalRef.current); };
+
+  const isFinished = timeLeft === 0;
+  const progress = selected > 0 ? timeLeft / selected : 0;
+  const mins = Math.floor(timeLeft / 60);
+  const secs = timeLeft % 60;
+  const timeStr = `${mins}:${String(secs).padStart(2, "0")}`;
+  const circumference = 2 * Math.PI * 54;
+  const strokeOffset = circumference * (1 - progress);
+
+  return (
+    <Modal title={`⏱ 타이머${gameName ? ` — ${gameName}` : ""}`} onClose={onClose}>
+      <div style={{ textAlign: "center" }}>
+        {/* 프리셋 버튼 */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+          {PRESETS.map(p => (
+            <button key={p.seconds} onClick={() => handleSelect(p.seconds)}
+              style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                background: selected === p.seconds ? C.accent : C.surface2,
+                color: selected === p.seconds ? "#fff" : C.textSub,
+                border: `1px solid ${selected === p.seconds ? C.accent : C.border}` }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 원형 타이머 */}
+        <div style={{ position: "relative", display: "inline-block", marginBottom: 20 }}>
+          <svg width="140" height="140" viewBox="0 0 128 128">
+            <circle cx="64" cy="64" r="54" fill="none" stroke={C.border} strokeWidth="8"/>
+            <circle cx="64" cy="64" r="54" fill="none"
+              stroke={isFinished ? "#ef4444" : running ? "#16a34a" : C.accent}
+              strokeWidth="8" strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeOffset}
+              transform="rotate(-90 64 64)"
+              style={{ transition: "stroke-dashoffset 0.8s linear, stroke 0.3s" }}
+            />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ fontSize: 34, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: isFinished ? "#ef4444" : C.text, letterSpacing: "-1px" }}>{timeStr}</div>
+            {isFinished && <div style={{ fontSize: 13, color: "#ef4444", fontWeight: 700, marginTop: 2 }}>⏰ 완료!</div>}
+            {running && !isFinished && <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>진행 중</div>}
+          </div>
+        </div>
+
+        {/* 컨트롤 버튼 */}
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 16 }}>
+          {!running ? (
+            <button onClick={handleStart}
+              style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: isFinished ? C.border : C.accent, color: isFinished ? C.textDim : "#fff", fontWeight: 700, fontSize: 14, cursor: isFinished ? "default" : "pointer" }}>
+              ▶ 시작
+            </button>
+          ) : (
+            <button onClick={handlePause}
+              style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+              ⏸ 일시정지
+            </button>
+          )}
+          <button onClick={handleReset}
+            style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.textSub, fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
+            ↺ 리셋
+          </button>
+        </div>
+
+        {/* 직접 입력 */}
+        <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+          <input type="number" min="5" max="3600" value={custom}
+            onChange={e => setCustom(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { const s = parseInt(custom); if (s > 0) { handleSelect(s); setCustom(""); } } }}
+            placeholder="초 직접 입력"
+            style={{ width: 110, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, fontSize: 12, color: C.text, outline: "none" }}
+          />
+          <button onClick={() => { const s = parseInt(custom); if (s > 0) { handleSelect(s); setCustom(""); } }}
+            style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            설정
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── 야추 점수판 ───────────────────────────────
+function ScoreSheetModal({ gameName, onClose }) {
+  const UPPER = [
+    { id: "ones",   label: "1 (에이스)",  max: 5  },
+    { id: "twos",   label: "2 (듀스)",    max: 10 },
+    { id: "threes", label: "3 (쓰리)",    max: 15 },
+    { id: "fours",  label: "4 (포스)",    max: 20 },
+    { id: "fives",  label: "5 (파이브)",  max: 25 },
+    { id: "sixes",  label: "6 (식스)",    max: 30 },
+  ];
+  const LOWER = [
+    { id: "three_kind",  label: "3 of a Kind", hint: "같은 숫자 3개 이상 → 합계" },
+    { id: "four_kind",   label: "4 of a Kind", hint: "같은 숫자 4개 이상 → 합계" },
+    { id: "full_house",  label: "Full House",  hint: "3+2 조합 → 25점" },
+    { id: "sm_straight", label: "Sm. Straight",hint: "4연속 → 30점" },
+    { id: "lg_straight", label: "Lg. Straight",hint: "5연속 → 40점" },
+    { id: "yahtzee",     label: "🎲 야추!",    hint: "5개 같은 숫자 → 50점" },
+    { id: "chance",      label: "Chance",      hint: "5개 주사위 합계" },
+  ];
+
+  const [players, setPlayers] = useState(["나", "상대"]);
+  const [newPlayer, setNewPlayer] = useState("");
+  const [scores, setScores] = useState({});
+
+  const setScore = (p, cat, v) => setScores(prev => ({ ...prev, [`${p}_${cat}`]: v === "" ? "" : Number(v) }));
+  const getScore = (p, cat) => { const v = scores[`${p}_${cat}`]; return v !== undefined ? v : ""; };
+  const upperSum = (p) => UPPER.reduce((s, c) => s + (getScore(p, c.id) !== "" ? Number(getScore(p, c.id)) : 0), 0);
+  const bonus = (p) => upperSum(p) >= 63 ? 35 : 0;
+  const lowerSum = (p) => LOWER.reduce((s, c) => s + (getScore(p, c.id) !== "" ? Number(getScore(p, c.id)) : 0), 0);
+  const total = (p) => upperSum(p) + bonus(p) + lowerSum(p);
+
+  const addPlayer = () => {
+    if (newPlayer.trim() && players.length < 6) {
+      setPlayers(prev => [...prev, newPlayer.trim()]);
+      setNewPlayer("");
+    }
+  };
+
+  const cellStyle = { padding: "5px 4px", borderBottom: `1px solid ${C.border}`, verticalAlign: "middle" };
+  const inputStyle = (p, c) => ({
+    width: "100%", padding: "4px 2px", textAlign: "center",
+    background: getScore(p, c) !== "" ? C.accentDim : C.surface2,
+    border: `1px solid ${getScore(p, c) !== "" ? C.accent+"55" : C.border}`,
+    borderRadius: 4, color: C.text, fontSize: 13, outline: "none", boxSizing: "border-box",
+  });
+
+  return (
+    <Modal title={`📝 점수판 — ${gameName || "야추"}`} onClose={onClose}>
+      {/* 플레이어 관리 */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {players.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 2, background: C.accentDim, borderRadius: 6, padding: "3px 8px 3px 10px" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.accent }}>{p}</span>
+            {players.length > 1 && (
+              <button onClick={() => setPlayers(prev => prev.filter((_, idx) => idx !== i))}
+                style={{ background: "none", border: "none", cursor: "pointer", color: C.accent, fontSize: 14, padding: "0 2px", lineHeight: 1 }}>×</button>
+            )}
+          </div>
+        ))}
+        {players.length < 6 && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <input value={newPlayer} onChange={e => setNewPlayer(e.target.value)} onKeyDown={e => e.key === "Enter" && addPlayer()}
+              placeholder="플레이어 추가"
+              style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 11, background: C.surface2, color: C.text, outline: "none", width: 88 }} />
+            <button onClick={addPlayer} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: C.accent, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+</button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: C.surface2 }}>
+              <th style={{ padding: "8px 6px", textAlign: "left", fontSize: 11, color: C.textDim, fontWeight: 700, minWidth: 110 }}>항목</th>
+              {players.map(p => <th key={p} style={{ padding: "8px 6px", fontSize: 12, fontWeight: 700, color: C.accent, textAlign: "center", minWidth: 56 }}>{p}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colSpan={players.length + 1} style={{ padding: "8px 4px 3px", fontSize: 10, fontWeight: 700, color: C.textDim, letterSpacing: 0.5 }}>▷ 상단 (Upper Section)</td></tr>
+            {UPPER.map(cat => (
+              <tr key={cat.id}>
+                <td style={{ ...cellStyle, fontSize: 12, color: C.textSub }}>{cat.label}</td>
+                {players.map(p => (
+                  <td key={p} style={{ ...cellStyle, textAlign: "center" }}>
+                    <input type="number" min="0" max={cat.max} value={getScore(p, cat.id)} onChange={e => setScore(p, cat.id, e.target.value)} style={inputStyle(p, cat.id)} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr style={{ background: C.surface2 }}>
+              <td style={{ ...cellStyle, fontWeight: 700, fontSize: 11, color: C.textSub }}>소계</td>
+              {players.map(p => <td key={p} style={{ ...cellStyle, textAlign: "center", fontWeight: 700, fontSize: 13 }}>{upperSum(p)}</td>)}
+            </tr>
+            <tr style={{ background: upperSum(players[0]) >= 63 ? "#d1fae5" : "#fef9c3" }}>
+              <td style={{ ...cellStyle, fontSize: 11, color: "#065f46", fontWeight: 600 }}>보너스 (63점↑ → +35)</td>
+              {players.map(p => {
+                const b = bonus(p);
+                const u = upperSum(p);
+                return (
+                  <td key={p} style={{ ...cellStyle, textAlign: "center", fontWeight: 700, fontSize: 13, color: b > 0 ? "#16a34a" : "#92400e" }}>
+                    {b > 0 ? "+35" : `${63 - u}부족`}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr><td colSpan={players.length + 1} style={{ padding: "8px 4px 3px", fontSize: 10, fontWeight: 700, color: C.textDim, letterSpacing: 0.5 }}>▷ 하단 (Lower Section)</td></tr>
+            {LOWER.map(cat => (
+              <tr key={cat.id}>
+                <td style={{ ...cellStyle }}>
+                  <div style={{ fontSize: 12, color: C.text, fontWeight: cat.id === "yahtzee" ? 700 : 400 }}>{cat.label}</div>
+                  <div style={{ fontSize: 10, color: C.textDim }}>{cat.hint}</div>
+                </td>
+                {players.map(p => (
+                  <td key={p} style={{ ...cellStyle, textAlign: "center" }}>
+                    <input type="number" min="0" max={50} value={getScore(p, cat.id)} onChange={e => setScore(p, cat.id, e.target.value)} style={inputStyle(p, cat.id)} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr style={{ background: C.accentDim, borderTop: `2px solid ${C.accent}` }}>
+              <td style={{ ...cellStyle, fontWeight: 800, color: C.accent, fontSize: 14 }}>🏆 총점</td>
+              {players.map(p => (
+                <td key={p} style={{ ...cellStyle, textAlign: "center", fontWeight: 800, color: C.accent, fontSize: 16 }}>{total(p)}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <button onClick={() => { if (window.confirm("점수판을 초기화할까요?")) setScores({}); }}
+        style={{ marginTop: 12, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.textDim, fontSize: 12, cursor: "pointer", width: "100%", fontWeight: 600 }}>
+        🔄 점수판 초기화
+      </button>
+    </Modal>
   );
 }
 
@@ -1314,11 +1744,11 @@ document.getElementById('loading').style.display = 'none';
 // Service Worker 등록 (PWA 홈화면 standalone 모드)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/boardgame-app/sw.js')
-            .then(() => console.log('SW 등록 완료'))
-                  .catch((err) => console.log('SW 등록 실패:', err));
-                    });
-                    }
+    navigator.serviceWorker.register('/boardgame-app/sw.js')
+      .then(() => console.log('SW 등록 완료'))
+      .catch((err) => console.log('SW 등록 실패:', err));
+  });
+}
   </script>
 
 </body>
