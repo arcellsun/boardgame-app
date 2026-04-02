@@ -266,8 +266,12 @@ async function aiSearchGame(gameName, apiKey) {
   const prompt = `다음 보드게임의 정보를 JSON 형식으로 알려주세요. 설명은 반드시 한국어로 작성해주세요.
 게임 이름: ${gameName}
 
-아래 JSON 형식으로만 응답해주세요 (다른 텍스트 없이):
+중요: 실제로 존재하는 보드게임만 응답하세요. 존재하지 않거나 확실하지 않은 게임이면 반드시 아래처럼 응답하세요:
+{"exists": false}
+
+실제 존재하는 게임이면 아래 JSON 형식으로만 응답해주세요 (다른 텍스트 없이):
 {
+  "exists": true,
   "name": "한국어 게임 이름 (없으면 원래 이름 그대로)",
   "minPlayers": 2,
   "maxPlayers": 4,
@@ -914,8 +918,6 @@ function BoardGameApp() {
             history={history.filter(h => h.gameId === selectedGame.id)}
             onEdit={() => { setEditingGame(selectedGame); setSelectedGame(null); }}
             onAddHistory={() => { setShowAddHistory(true); setSelectedGame(null); }}
-            onOpenTimer={() => { setTimerGame(selectedGame); setShowTimer(true); setSelectedGame(null); }}
-            onOpenScoreSheet={() => { setScoreSheetGame(selectedGame); setShowScoreSheet(true); setSelectedGame(null); }}
           />
         </Modal>
       )}
@@ -1010,7 +1012,7 @@ function BoardGameApp() {
 }
 
 // ── 게임 상세 ──────────────────────────────────
-function GameDetail({ game, plays, history, onEdit, onAddHistory, onOpenTimer, onOpenScoreSheet }) {
+function GameDetail({ game, plays, history, onEdit, onAddHistory }) {
   const [tab, setTab] = useState("info");
   const gc = genreColor(game.genre);
   const dc = DIFFICULTY_COLORS[game.difficulty] || DIFFICULTY_COLORS["보통"];
@@ -1142,16 +1144,6 @@ function GameDetail({ game, plays, history, onEdit, onAddHistory, onOpenTimer, o
             🎮 기록 추가
           </button>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onOpenTimer}
-            style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid #f59e0b`, background: "#fff8e1", color: "#b45309", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-            ⏱ 타이머
-          </button>
-          <button onClick={onOpenScoreSheet}
-            style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid #7c3aed`, background: "#f5f3ff", color: "#5b21b6", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-            📝 점수판
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -1222,6 +1214,10 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
     setLocalResults([]);
     try {
       const result = await aiSearchGame(query, apiKey);
+      if (result.exists === false) {
+        setAiError(`"${query}" — 존재하지 않는 게임이거나 정보를 찾을 수 없습니다. 게임 이름을 다시 확인해주세요.`);
+        return;
+      }
       setForm(f => ({
         ...f,
         name: result.name || f.name,
