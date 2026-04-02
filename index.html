@@ -10,9 +10,12 @@
   <meta name="theme-color" content="#c0392b" />
   <title>🎲 보드게임 매니저</title>
 
-  <!-- PWA Manifest (인라인) -->
-  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22%EB%B3%B4%EB%93%9C%EA%B2%8C%EC%9E%84+%EB%A7%A4%EB%8B%88%EC%A0%80%22%2C%22short_name%22%3A%22%EB%B3%B4%EB%93%9C%EA%B2%8C%EC%9E%84%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23faf8f4%22%2C%22theme_color%22%3A%22%23c0392b%22%7D" />
-
+    <!-- PWA Manifest -->
+      <link rel="manifest" href="manifest.json" />
+        <!-- iOS 아이콘 -->
+          <link rel="apple-touch-icon" href="icons/icon-180.png" />
+            <!-- Android 아이콘 fallback -->
+              <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <!-- 로딩 스타일 -->
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1307,6 +1310,15 @@ const container = document.getElementById('root');
 const root = ReactDOM.createRoot(container);
 root.render(React.createElement(BoardGameApp, null));
 document.getElementById('loading').style.display = 'none';
+
+// Service Worker 등록 (PWA 홈화면 standalone 모드)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/boardgame-app/sw.js')
+            .then(() => console.log('SW 등록 완료'))
+                  .catch((err) => console.log('SW 등록 실패:', err));
+                    });
+                    }
   </script>
 
 </body>
