@@ -276,9 +276,10 @@ async function aiSearchGame(gameName, apiKey) {
   "difficulty": "보통",
   "description": "게임 소개 2~3문장 (한국어)",
   "objective": "승리 조건 설명 (한국어)",
-  "howToPlay": "게임 진행 방식 설명 (한국어)",
+  "howToPlay": "1. 첫 번째 단계 설명.\n2. 두 번째 단계 설명.\n3. 세 번째 단계 설명.\n(이런 형식으로 번호를 붙여 각 단계를 줄바꿈으로 구분)",
   "components": "주요 구성품 목록 (한국어)",
-  "tags": ["태그1", "태그2", "태그3"]
+  "tags": ["태그1", "태그2", "태그3"],
+  "bggId": "BoardGameGeek 게임 ID 숫자 (모르면 null)"
 }
 genre는 반드시 다음 중 하나: 전략, 파티, 협력, 추리, 경제, 카드, RPG, 추상, 패밀리, 기타
 difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려움, 매우 어려움`;
@@ -322,6 +323,39 @@ difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("AI 응답 파싱 실패");
   return JSON.parse(match[0]);
+}
+
+// ─── BGG 이미지 자동 로딩 ──────────────────────
+async function fetchBGGImage(gameName, bggId) {
+  try {
+    const proxy = 'https://corsproxy.io/?';
+    let gameId = bggId;
+    if (!gameId) {
+      // 이름으로 검색
+      const searchUrl = proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame&exact=1`);
+      const r = await fetch(searchUrl);
+      const txt = await r.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(txt, 'text/xml');
+      const item = doc.querySelector('item');
+      if (!item) {
+        // exact 실패 시 일반 검색
+        const r2 = await fetch(proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame`));
+        const txt2 = await r2.text();
+        const doc2 = new DOMParser().parseFromString(txt2, 'text/xml');
+        gameId = doc2.querySelector('item')?.getAttribute('id');
+      } else {
+        gameId = item.getAttribute('id');
+      }
+    }
+    if (!gameId) return null;
+    const detailUrl = proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${gameId}&type=boardgame`);
+    const dr = await fetch(detailUrl);
+    const dtxt = await dr.text();
+    const ddoc = new DOMParser().parseFromString(dtxt, 'text/xml');
+    const thumb = ddoc.querySelector('thumbnail')?.textContent?.trim();
+    return thumb || null;
+  } catch { return null; }
 }
 
 // ─── 컴포넌트 ─────────────────────────────────
@@ -455,10 +489,8 @@ function BoardGameApp() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Btn size="sm" onClick={handleExport}>⬇ 내보내기</Btn>
-            <Btn size="sm" onClick={() => fileInputRef.current.click()}>⬆ 불러오기</Btn>
             <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-            <button onClick={() => setShowSettings(true)} title="AI 설정"
+            <button onClick={() => setShowSettings(true)} title="설정"
               style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${apiKey ? C.accent : C.border}`, background: apiKey ? C.accentDim : C.surface2, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>
               ⚙️
             </button>
@@ -904,6 +936,19 @@ function BoardGameApp() {
                 ✅ API 키가 설정되었습니다. 게임 추가 시 🤖 AI 검색을 사용하세요!
               </div>
             )}
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.textSub }}>💾 데이터 관리</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { handleExport(); setShowSettings(false); }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                  ⬇ 내보내기
+                </button>
+                <button onClick={() => { fileInputRef.current.click(); setShowSettings(false); }}
+                  style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                  ⬆ 불러오기
+                </button>
+              </div>
+            </div>
             <button onClick={() => setShowSettings(false)}
               style={{ padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               확인
@@ -936,20 +981,11 @@ function BoardGameApp() {
         <ScoreSheetModal gameName={scoreSheetGame?.name} onClose={() => { setShowScoreSheet(false); setScoreSheetGame(null); }} />
       )}
 
-      {/* ══ 타이머 플로팅 버튼 ══ */}
-      <button
-        onClick={() => setShowTimer(true)}
-        title="타이머 열기"
-        style={{
-          position: "fixed", bottom: 24, right: 20, width: 48, height: 48,
-          borderRadius: "50%", border: "none",
-          background: C.accent, color: "#fff", fontSize: 20,
-          cursor: "pointer", zIndex: 40,
-          boxShadow: "0 4px 16px #0003",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-        ⏱
-      </button>
+      {/* ══ SpeedDial 플로팅 버튼 ══ */}
+      <SpeedDial
+        onTimer={() => setShowTimer(true)}
+        onScoreSheet={() => setShowScoreSheet(true)}
+      />
     </div>
   );
 }
@@ -1034,10 +1070,27 @@ function GameDetail({ game, plays, history, onEdit, onAddHistory, onOpenTimer, o
       )}
 
       {tab === "how" && (
-        <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-          {game.howToPlay
-            ? <p style={{ color: C.textSub }}>{game.howToPlay}</p>
-            : <p style={{ color: C.textDim, fontStyle: "italic" }}>플레이 방법이 아직 입력되지 않았습니다.</p>
+        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+          {game.howToPlay ? (() => {
+            const lines = game.howToPlay.split('\n').filter(l => l.trim());
+            const isNumbered = lines.some(l => /^\d+[\.\)]\s/.test(l.trim()));
+            if (isNumbered) {
+              return (
+                <ol style={{ paddingLeft: 18, color: C.textSub }}>
+                  {lines.map((line, i) => {
+                    const clean = line.replace(/^\d+[\.\)]\s*/, '').trim();
+                    return <li key={i} style={{ marginBottom: 6 }}>{clean}</li>;
+                  })}
+                </ol>
+              );
+            }
+            return (
+              <ol style={{ paddingLeft: 18, color: C.textSub }}>
+                {lines.map((line, i) => <li key={i} style={{ marginBottom: 6 }}>{line.trim()}</li>)}
+              </ol>
+            );
+          })()
+          : <p style={{ color: C.textDim, fontStyle: "italic" }}>플레이 방법이 아직 입력되지 않았습니다.</p>
           }
         </div>
       )}
@@ -1101,6 +1154,7 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
   // AI 검색 상태
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [imgLoading, setImgLoading] = useState(false);
 
   const handleLocalSearch = (q) => {
     setLocalQuery(q);
@@ -1118,9 +1172,10 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
 
   const handleLocalSelect = (item) => {
     const duration = Math.round((item.minTime + item.maxTime) / 2);
+    const newName = item.name;
     setForm(f => ({
       ...f,
-      name: item.name,
+      name: newName,
       minPlayers: item.minPlayers,
       maxPlayers: item.maxPlayers,
       duration,
@@ -1131,6 +1186,12 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
     setTagsText((item.tags || []).join(", "));
     setLocalResults([]);
     setLocalQuery("");
+    // BGG 이미지 자동 로딩
+    setImgLoading(true);
+    fetchBGGImage(newName, null).then(url => {
+      if (url) set("imageUrl", url);
+      setImgLoading(false);
+    });
   };
 
   const handleAiSearch = async () => {
@@ -1157,6 +1218,12 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
       }));
       setTagsText((result.tags || []).join(", "));
       setLocalQuery("");
+      // BGG 이미지 자동 로딩 (AI 결과의 bggId 또는 게임 이름으로)
+      setImgLoading(true);
+      fetchBGGImage(result.name || query, result.bggId || null).then(url => {
+        if (url) set("imageUrl", url);
+        setImgLoading(false);
+      });
     } catch (e) {
       setAiError(e.message || "AI 검색 실패");
     } finally {
@@ -1230,16 +1297,37 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
         </div>
       </div>
 
-      {/* 이미지 미리보기 */}
-      {form.imageUrl && (
-        <div style={{ display: "flex", gap: 12, alignItems: "center", background: C.surface2, borderRadius: 8, padding: 10 }}>
-          <img src={form.imageUrl} alt="게임 이미지" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.border}` }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: C.textDim, marginBottom: 3 }}>게임 이미지</div>
-            <button onClick={() => set("imageUrl", "")} style={{ fontSize: 11, color: "#991b1b", background: "none", border: "none", cursor: "pointer", padding: 0 }}>✕ 제거</button>
+      {/* 이미지 섹션 */}
+      <div style={{ background: C.surface2, borderRadius: 10, padding: 12, border: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, marginBottom: 8 }}>🖼 게임 표지 사진</div>
+        {imgLoading && (
+          <div style={{ fontSize: 12, color: C.accent, marginBottom: 8 }}>🔍 BGG에서 표지 사진 검색 중...</div>
+        )}
+        {form.imageUrl ? (
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <img src={form.imageUrl} alt="게임 이미지" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}`, flexShrink: 0 }}
+              onError={e => { e.target.style.display='none'; }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.imageUrl}</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => set("imageUrl", "")} style={{ fontSize: 11, color: "#991b1b", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 5, cursor: "pointer", padding: "3px 8px" }}>✕ 제거</button>
+              </div>
+            </div>
           </div>
+        ) : (
+          <div style={{ color: C.textDim, fontSize: 12, marginBottom: 8 }}>
+            {imgLoading ? "" : "AI·DB 검색 시 자동으로 불러옵니다. 직접 URL을 입력할 수도 있어요."}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginTop: form.imageUrl ? 8 : 0 }}>
+          <input
+            value={form.imageUrl}
+            onChange={e => set("imageUrl", e.target.value)}
+            placeholder="이미지 URL 직접 입력 (https://...)"
+            style={{ flex: 1, padding: "7px 10px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, color: C.text, outline: "none" }}
+          />
         </div>
-      )}
+      </div>
 
       <Field label="게임 이름 *">
         <Input value={form.name} onChange={e => set("name", e.target.value)} placeholder="예: 카탄" />
@@ -1275,9 +1363,6 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
       </Field>
       <Field label="▶ 설명 영상 URL">
         <Input value={form.videoUrl} onChange={e => set("videoUrl", e.target.value)} placeholder="https://youtube.com/..." />
-      </Field>
-      <Field label="🖼 이미지 URL">
-        <Input value={form.imageUrl} onChange={e => set("imageUrl", e.target.value)} placeholder="https://..." />
       </Field>
       <Field label="태그 (쉼표 구분)">
         <Input value={tagsText} onChange={e => setTagsText(e.target.value)} placeholder="입문, 협력, 장시간 ..." />
@@ -1348,6 +1433,34 @@ function HistoryForm({ games, onSave, onClose }) {
         <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${C.border}`, background: "none", color: C.textSub, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>취소</button>
         <button onClick={handleSave} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>저장</button>
       </div>
+    </div>
+  );
+}
+
+// ── SpeedDial 플로팅 버튼 ─────────────────────
+function SpeedDial({ onTimer, onScoreSheet }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "fixed", bottom: 24, right: 20, zIndex: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      {open && (
+        <>
+          <button onClick={() => { setOpen(false); onScoreSheet(); }}
+            style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: "#5b21b6", color: "#fff", fontSize: 18, cursor: "pointer", boxShadow: "0 2px 10px #0004", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeUp .15s ease" }}
+            title="점수판">
+            📝
+          </button>
+          <button onClick={() => { setOpen(false); onTimer(); }}
+            style={{ width: 44, height: 44, borderRadius: "50%", border: "none", background: "#b45309", color: "#fff", fontSize: 18, cursor: "pointer", boxShadow: "0 2px 10px #0004", display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeUp .1s ease" }}
+            title="타이머">
+            ⏱
+          </button>
+        </>
+      )}
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: 50, height: 50, borderRadius: "50%", border: "none", background: open ? "#374151" : C.accent, color: "#fff", fontSize: open ? 18 : 22, cursor: "pointer", boxShadow: "0 4px 16px #0003", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", transform: open ? "rotate(45deg)" : "none" }}>
+        {open ? "✕" : "🎲"}
+      </button>
+      <style>{`@keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
     </div>
   );
 }
