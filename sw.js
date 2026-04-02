@@ -3,8 +3,8 @@ const ASSETS = [
   '/boardgame-app/',
     '/boardgame-app/index.html',
       '/boardgame-app/manifest.json',
-        '/boardgame-app/icons/icon-192.png',
-          '/boardgame-app/icons/icon-512.png',
+        '/boardgame-app/icon-192.png',
+          '/boardgame-app/icon-512.png',
           ];
 
           self.addEventListener('install', (e) => {
