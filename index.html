@@ -325,36 +325,30 @@ difficulty는 반드시 다음 중 하나: 매우 쉬움, 쉬움, 보통, 어려
   return JSON.parse(match[0]);
 }
 
-// ─── BGG 이미지 자동 로딩 ──────────────────────
-async function fetchBGGImage(gameName, bggId) {
+// ─── Wikipedia 이미지 자동 로딩 ──────────────────────
+async function fetchGameImage(gameName) {
   try {
-    const proxy = 'https://corsproxy.io/?';
-    let gameId = bggId;
-    if (!gameId) {
-      // 이름으로 검색
-      const searchUrl = proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame&exact=1`);
-      const r = await fetch(searchUrl);
-      const txt = await r.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(txt, 'text/xml');
-      const item = doc.querySelector('item');
-      if (!item) {
-        // exact 실패 시 일반 검색
-        const r2 = await fetch(proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame`));
-        const txt2 = await r2.text();
-        const doc2 = new DOMParser().parseFromString(txt2, 'text/xml');
-        gameId = doc2.querySelector('item')?.getAttribute('id');
-      } else {
-        gameId = item.getAttribute('id');
+    // 1) 영문 Wikipedia에서 "(board game)" 붙여서 검색
+    const queries = [
+      gameName + ' (board game)',
+      gameName,
+    ];
+    for (const q of queries) {
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`;
+      const r = await fetch(url);
+      if (r.ok) {
+        const data = await r.json();
+        if (data.thumbnail?.source) return data.thumbnail.source;
       }
     }
-    if (!gameId) return null;
-    const detailUrl = proxy + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${gameId}&type=boardgame`);
-    const dr = await fetch(detailUrl);
-    const dtxt = await dr.text();
-    const ddoc = new DOMParser().parseFromString(dtxt, 'text/xml');
-    const thumb = ddoc.querySelector('thumbnail')?.textContent?.trim();
-    return thumb || null;
+    // 2) 한국어 Wikipedia fallback
+    const krUrl = `https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameName)}`;
+    const kr = await fetch(krUrl);
+    if (kr.ok) {
+      const krData = await kr.json();
+      if (krData.thumbnail?.source) return krData.thumbnail.source;
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -1186,9 +1180,9 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
     setTagsText((item.tags || []).join(", "));
     setLocalResults([]);
     setLocalQuery("");
-    // BGG 이미지 자동 로딩
+    // Wikipedia 이미지 자동 로딩
     setImgLoading(true);
-    fetchBGGImage(newName, null).then(url => {
+    fetchGameImage(newName).then(url => {
       if (url) set("imageUrl", url);
       setImgLoading(false);
     });
@@ -1218,9 +1212,9 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
       }));
       setTagsText((result.tags || []).join(", "));
       setLocalQuery("");
-      // BGG 이미지 자동 로딩 (AI 결과의 bggId 또는 게임 이름으로)
+      // Wikipedia 이미지 자동 로딩
       setImgLoading(true);
-      fetchBGGImage(result.name || query, result.bggId || null).then(url => {
+      fetchGameImage(result.name || query).then(url => {
         if (url) set("imageUrl", url);
         setImgLoading(false);
       });
@@ -1301,7 +1295,7 @@ function GameForm({ game, apiKey, onSave, onClose, onOpenSettings }) {
       <div style={{ background: C.surface2, borderRadius: 10, padding: 12, border: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, marginBottom: 8 }}>🖼 게임 표지 사진</div>
         {imgLoading && (
-          <div style={{ fontSize: 12, color: C.accent, marginBottom: 8 }}>🔍 BGG에서 표지 사진 검색 중...</div>
+          <div style={{ fontSize: 12, color: C.accent, marginBottom: 8 }}>🔍 Wikipedia에서 표지 사진 검색 중...</div>
         )}
         {form.imageUrl ? (
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
