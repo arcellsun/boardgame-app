@@ -53,7 +53,7 @@
 
   <!-- 앱 코드 -->
   <script type="text/babel" data-presets="react">
-const { useState, useMemo, useRef, useEffect } = React;
+const { useState, useMemo, useRef, useEffect, useCallback } = React;
 
 // ─── 상수 ────────────────────────────────────
 const GENRES = ["전략", "파티", "협력", "추리", "경제", "카드", "RPG", "추상", "패밀리", "기타"];
@@ -357,7 +357,7 @@ function compressImage(file, maxSize = 200, quality = 0.7) {
 // ─── Wikipedia 이미지 자동 로딩 ──────────────────────
 async function fetchGameImage(gameName) {
   try {
-    // 1) 영문 Wikipedia에서 "(board game)" 붙여서 검색
+    // 1. 영문 Wikipedia에서 "(board game)" 붙여서 검색
     const queries = [
       gameName + ' (board game)',
       gameName,
@@ -370,7 +370,7 @@ async function fetchGameImage(gameName) {
         if (data.thumbnail?.source) return data.thumbnail.source;
       }
     }
-    // 2) 한국어 Wikipedia fallback
+    // 2. 한국어 Wikipedia fallback
     const krUrl = `https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(gameName)}`;
     const kr = await fetch(krUrl);
     if (kr.ok) {
@@ -379,6 +379,540 @@ async function fetchGameImage(gameName) {
     }
     return null;
   } catch { return null; }
+}
+
+// ─── 도구 컴포넌트들 ──────────────────────────
+function TurnOrderTool({ onClose }) {
+  const [players, setPlayers] = useState("");
+  const [result, setResult] = useState(null);
+  const [rolling, setRolling] = useState(false);
+
+  const handleRoll = () => {
+    const names = players.split(",").map(p => p.trim()).filter(p => p);
+    if (names.length === 0) return;
+    setRolling(true);
+    setTimeout(() => {
+      const shuffled = [...names].sort(() => Math.random() - 0.5);
+      setResult(shuffled);
+      setRolling(false);
+    }, 800);
+  };
+
+  return (
+    <Modal title="🎯 순서 뽑기" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="플레이어 이름 (쉼표로 구분)">
+          <Textarea value={players} onChange={e => setPlayers(e.target.value)} placeholder="김철수, 이영희, 박민준" style={{ minHeight: 80 }} />
+        </Field>
+        <Btn onClick={handleRoll}>{rolling ? "🎲 섞는 중..." : "🎲 순서 뽑기"}</Btn>
+        {result && (
+          <div style={{ background: C.accentDim, borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>순서:</div>
+            {result.map((name, i) => (
+              <div key={i} style={{ fontSize: 18, fontWeight: 700, color: C.accent, marginBottom: i === result.length - 1 ? 0 : 8 }}>
+                {i + 1}. {name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function TeamSplitTool({ onClose }) {
+  const [players, setPlayers] = useState("");
+  const [teamCount, setTeamCount] = useState(2);
+  const [result, setResult] = useState(null);
+
+  const handleSplit = () => {
+    const names = players.split(",").map(p => p.trim()).filter(p => p);
+    if (names.length === 0 || teamCount < 2) return;
+    const shuffled = [...names].sort(() => Math.random() - 0.5);
+    const teams = Array.from({ length: teamCount }, () => []);
+    shuffled.forEach((name, i) => teams[i % teamCount].push(name));
+    setResult(teams);
+  };
+
+  const teamColors = ["#ff6b6b", "#4ecdc4", "#45b7d1", "#ffd93d"];
+
+  return (
+    <Modal title="👥 팀 나누기" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="플레이어 이름 (쉼표로 구분)">
+          <Textarea value={players} onChange={e => setPlayers(e.target.value)} placeholder="김철수, 이영희, 박민준, 정수민" style={{ minHeight: 80 }} />
+        </Field>
+        <Field label="팀 개수">
+          <Select value={teamCount} onChange={e => setTeamCount(Number(e.target.value))}>
+            {[2, 3, 4].map(n => <option key={n} value={n}>{n}개</option>)}
+          </Select>
+        </Field>
+        <Btn onClick={handleSplit}>👥 팀 나누기</Btn>
+        {result && (
+          <div style={{ display: "grid", gap: 10 }}>
+            {result.map((team, i) => (
+              <div key={i} style={{ background: teamColors[i], opacity: 0.2, borderLeft: `4px solid ${teamColors[i]}`, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: teamColors[i], marginBottom: 6 }}>팀 {i + 1}</div>
+                {team.map((name, j) => (
+                  <div key={j} style={{ fontSize: 14, color: C.text, marginBottom: j === team.length - 1 ? 0 : 4 }}>{name}</div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function DiceRollerTool({ onClose }) {
+  const [diceType, setDiceType] = useState("D6");
+  const [diceCount, setDiceCount] = useState(1);
+  const [result, setResult] = useState(null);
+  const [rolling, setRolling] = useState(false);
+
+  const diceMap = { D4: 4, D6: 6, D8: 8, D10: 10, D12: 12, D20: 20 };
+
+  const handleRoll = () => {
+    setRolling(true);
+    setTimeout(() => {
+      const sides = diceMap[diceType];
+      const rolls = Array.from({ length: diceCount }, () => Math.floor(Math.random() * sides) + 1);
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      setResult({ rolls, sum });
+      setRolling(false);
+    }, 600);
+  };
+
+  return (
+    <Modal title="🎰 주사위 굴리기" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="주사위 종류">
+          <Select value={diceType} onChange={e => setDiceType(e.target.value)}>
+            {Object.keys(diceMap).map(d => <option key={d} value={d}>{d}</option>)}
+          </Select>
+        </Field>
+        <Field label="주사위 개수">
+          <Select value={diceCount} onChange={e => setDiceCount(Number(e.target.value))}>
+            {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}개</option>)}
+          </Select>
+        </Field>
+        <Btn onClick={handleRoll}>{rolling ? "🎲 굴리는 중..." : "🎲 굴리기"}</Btn>
+        {result && (
+          <div style={{ background: C.accentDim, borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>결과:</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              {result.rolls.map((roll, i) => (
+                <div key={i} style={{ background: C.accent, color: "#fff", width: 40, height: 40, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16 }}>
+                  {roll}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 14, color: C.textDim, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+              합계: <span style={{ fontWeight: 700, fontSize: 16, color: C.accent }}>{result.sum}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function CoinFlipTool({ onClose }) {
+  const [result, setResult] = useState(null);
+  const [flipping, setFlipping] = useState(false);
+
+  const handleFlip = () => {
+    setFlipping(true);
+    setTimeout(() => {
+      setResult(Math.random() < 0.5 ? "앞면" : "뒷면");
+      setFlipping(false);
+    }, 800);
+  };
+
+  return (
+    <Modal title="🪙 동전 던지기" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16, textAlign: "center" }}>
+        <div style={{ fontSize: 80, animation: flipping ? "spin 0.6s linear" : "none" }}>🪙</div>
+        <Btn onClick={handleFlip}>{flipping ? "던지는 중..." : "동전 던지기"}</Btn>
+        {result && (
+          <div style={{ background: C.accentDim, borderRadius: 10, padding: 20 }}>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>결과:</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: C.accent }}>{result}</div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function RouletteTool({ onClose }) {
+  const [items, setItems] = useState("");
+  const [itemList, setItemList] = useState([]);
+  const [result, setResult] = useState(null);
+  const [spinning, setSpinning] = useState(false);
+
+  const handleAddItems = () => {
+    const list = items.split("\n").map(i => i.trim()).filter(i => i);
+    if (list.length > 0) setItemList(list);
+  };
+
+  const handleSpin = () => {
+    if (itemList.length === 0) return;
+    setSpinning(true);
+    setTimeout(() => {
+      setResult(itemList[Math.floor(Math.random() * itemList.length)]);
+      setSpinning(false);
+    }, 1200);
+  };
+
+  return (
+    <Modal title="🎡 룰렛 돌리기" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="항목 (줄별로 입력)">
+          <Textarea value={items} onChange={e => setItems(e.target.value)} placeholder="항목1\n항목2\n항목3" style={{ minHeight: 100 }} />
+        </Field>
+        <Btn onClick={handleAddItems}>항목 등록</Btn>
+        {itemList.length > 0 && (
+          <>
+            <div style={{ fontSize: 12, color: C.textDim }}>등록된 항목: {itemList.length}개</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {itemList.map((item, i) => (
+                <span key={i} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, background: C.surface2, color: C.text, border: `1px solid ${C.border}` }}>{item}</span>
+              ))}
+            </div>
+            <Btn onClick={handleSpin}>{spinning ? "🎡 돌리는 중..." : "🎡 돌리기"}</Btn>
+            {result && (
+              <div style={{ background: C.accentDim, borderRadius: 10, padding: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>선택된 항목:</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: C.accent }}>{result}</div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function RandomNumberTool({ onClose }) {
+  const [min, setMin] = useState(1);
+  const [max, setMax] = useState(100);
+  const [result, setResult] = useState(null);
+  const [rolling, setRolling] = useState(false);
+
+  const handleGenerate = () => {
+    const minVal = Math.min(Number(min), Number(max));
+    const maxVal = Math.max(Number(min), Number(max));
+    if (minVal >= maxVal) return;
+    setRolling(true);
+    setTimeout(() => {
+      setResult(Math.floor(Math.random() * (maxVal - minVal + 1)) + minVal);
+      setRolling(false);
+    }, 600);
+  };
+
+  return (
+    <Modal title="🔢 랜덤 숫자" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="최소값">
+          <Input type="number" value={min} onChange={e => setMin(e.target.value)} />
+        </Field>
+        <Field label="최대값">
+          <Input type="number" value={max} onChange={e => setMax(e.target.value)} />
+        </Field>
+        <Btn onClick={handleGenerate}>{rolling ? "생성 중..." : "🔢 숫자 생성"}</Btn>
+        {result !== null && (
+          <div style={{ background: C.accentDim, borderRadius: 10, padding: 20, textAlign: "center" }}>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>결과:</div>
+            <div style={{ fontSize: 48, fontWeight: 700, color: C.accent }}>{result}</div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function TournamentTool({ onClose }) {
+  const [players, setPlayers] = useState("");
+  const [bracket, setBracket] = useState(null);
+  const [winners, setWinners] = useState({});
+
+  const handleCreateBracket = () => {
+    const names = players.split("\n").map(p => p.trim()).filter(p => p);
+    if (names.length < 2) return;
+    const createRound = (names) => {
+      if (names.length === 1) return names[0];
+      const matches = [];
+      for (let i = 0; i < names.length; i += 2) {
+        matches.push({
+          id: Math.random().toString(36).substr(2, 9),
+          player1: names[i],
+          player2: names[i + 1] || null,
+        });
+      }
+      return matches;
+    };
+    const round1 = createRound(names);
+    setBracket({ round1, winners: {} });
+    setWinners({});
+  };
+
+  const handleAdvance = (matchId, winner) => {
+    setWinners(w => ({ ...w, [matchId]: winner }));
+  };
+
+  return (
+    <Modal title="🏆 대진표" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        {!bracket ? (
+          <>
+            <Field label="플레이어 이름 (줄별로 입력)">
+              <Textarea value={players} onChange={e => setPlayers(e.target.value)} placeholder="플레이어1\n플레이어2\n플레이어3\n플레이어4" style={{ minHeight: 120 }} />
+            </Field>
+            <Btn onClick={handleCreateBracket}>🏆 대진표 생성</Btn>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "grid", gap: 10 }}>
+              {Array.isArray(bracket.round1) && bracket.round1.map(match => (
+                <div key={match.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <button onClick={() => handleAdvance(match.id, match.player1)}
+                      style={{ padding: "10px 12px", borderRadius: 6, border: "none", background: winners[match.id] === match.player1 ? C.accent : C.surface2, color: winners[match.id] === match.player1 ? "#fff" : C.text, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                      {match.player1} {winners[match.id] === match.player1 && "✓"}
+                    </button>
+                    {match.player2 && (
+                      <button onClick={() => handleAdvance(match.id, match.player2)}
+                        style={{ padding: "10px 12px", borderRadius: 6, border: "none", background: winners[match.id] === match.player2 ? C.accent : C.surface2, color: winners[match.id] === match.player2 ? "#fff" : C.text, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                        {match.player2} {winners[match.id] === match.player2 && "✓"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => { setBracket(null); setWinners({}); }} style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", color: C.text, fontWeight: 600 }}>
+              다시 생성
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function BGMTool({ onClose }) {
+  const [gameName, setGameName] = useState("");
+
+  const popularGames = [
+    { name: "카탄", id: "catan" },
+    { name: "판데믹", id: "pandemic" },
+    { name: "글룸헤이븐", id: "gloomhaven" },
+    { name: "스플렌더", id: "splendor" },
+    { name: "윙스팬", id: "wingspan" },
+  ];
+
+  const openMelodice = (name) => {
+    if (!name.trim()) return;
+    window.open(`https://melodice.org/playlist/${encodeURIComponent(name)}/`, "_blank");
+  };
+
+  return (
+    <Modal title="🎵 배경음악 (Melodice)" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ background: C.accentDim, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSub, lineHeight: 1.6 }}>
+          <b style={{ color: C.accent }}>Melodice</b>에서 보드게임 분위기에 맞는 음악을 찾아보세요!
+        </div>
+        <Field label="게임 이름 검색">
+          <div style={{ display: "flex", gap: 8 }}>
+            <Input value={gameName} onChange={e => setGameName(e.target.value)} placeholder="게임 이름" style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && openMelodice(gameName)} />
+            <Btn onClick={() => openMelodice(gameName)} size="sm">검색</Btn>
+          </div>
+        </Field>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 8 }}>인기 게임</div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {popularGames.map(game => (
+              <button key={game.id} onClick={() => openMelodice(game.name)}
+                style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", color: C.text, fontSize: 13, fontWeight: 500, textAlign: "left" }}>
+                🎵 {game.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function FirstPlayerTool({ onClose }) {
+  const [players, setPlayers] = useState("");
+  const [playerList, setPlayerList] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [round, setRound] = useState(1);
+
+  const handleAddPlayers = () => {
+    const list = players.split("\n").map(p => p.trim()).filter(p => p);
+    if (list.length > 0) {
+      setPlayerList(list);
+      setCurrentIndex(0);
+      setRound(1);
+    }
+  };
+
+  const handleNext = () => {
+    const nextIndex = (currentIndex + 1) % playerList.length;
+    setCurrentIndex(nextIndex);
+    if (nextIndex === 0) setRound(round + 1);
+  };
+
+  return (
+    <Modal title="⭐ 첫 번째 플레이어 마커" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        {playerList.length === 0 ? (
+          <>
+            <Field label="플레이어 이름 (줄별로 입력)">
+              <Textarea value={players} onChange={e => setPlayers(e.target.value)} placeholder="플레이어1\n플레이어2\n플레이어3" style={{ minHeight: 100 }} />
+            </Field>
+            <Btn onClick={handleAddPlayers}>플레이어 설정</Btn>
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign: "center", paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 6 }}>라운드 {round}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: C.accent, marginBottom: 12 }}>⭐</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 12 }}>{playerList[currentIndex]}</div>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {playerList.map((name, i) => (
+                <div key={i} style={{ padding: "8px 12px", borderRadius: 6, background: i === currentIndex ? C.accent : C.surface2, color: i === currentIndex ? "#fff" : C.text, textAlign: "center", fontSize: 13, fontWeight: i === currentIndex ? 700 : 500 }}>
+                  {name}
+                </div>
+              ))}
+            </div>
+            <Btn onClick={handleNext}>➜ 다음 플레이어</Btn>
+            <button onClick={() => { setPlayerList([]); setPlayers(""); }} style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", color: C.text, fontWeight: 600, fontSize: 13 }}>
+              초기화
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function VoteTool({ onClose }) {
+  const [options, setOptions] = useState("");
+  const [optionList, setOptionList] = useState([]);
+  const [votes, setVotes] = useState({});
+
+  const handleAddOptions = () => {
+    const list = options.split("\n").map(o => o.trim()).filter(o => o);
+    if (list.length > 0) {
+      setOptionList(list);
+      const v = {};
+      list.forEach(opt => v[opt] = 0);
+      setVotes(v);
+    }
+  };
+
+  const handleVote = (option) => {
+    setVotes(v => ({ ...v, [option]: (v[option] || 0) + 1 }));
+  };
+
+  const handleReset = () => {
+    const v = {};
+    optionList.forEach(opt => v[opt] = 0);
+    setVotes(v);
+  };
+
+  const maxVotes = Math.max(...Object.values(votes), 1);
+
+  return (
+    <Modal title="🗳️ 투표" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        {optionList.length === 0 ? (
+          <>
+            <Field label="투표 항목 (줄별로 입력)">
+              <Textarea value={options} onChange={e => setOptions(e.target.value)} placeholder="선택지1\n선택지2\n선택지3" style={{ minHeight: 100 }} />
+            </Field>
+            <Btn onClick={handleAddOptions}>투표 시작</Btn>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "grid", gap: 12 }}>
+              {optionList.map(option => (
+                <div key={option}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{option}</span>
+                    <span style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{votes[option] || 0}표</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ flex: 1, height: 8, background: C.surface2, borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", background: C.accent, width: `${((votes[option] || 0) / maxVotes) * 100}%`, transition: "width .2s" }} />
+                    </div>
+                    <button onClick={() => handleVote(option)} style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+                      +1
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Btn onClick={handleReset}>🔄 초기화</Btn>
+            <button onClick={() => { setOptionList([]); setVotes({}); setOptions(""); }} style={{ padding: "10px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", color: C.text, fontWeight: 600, fontSize: 13 }}>
+              다시 설정
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function QRShareTool({ games, onClose }) {
+  const [selectedGameId, setSelectedGameId] = useState("");
+  const [qrUrl, setQrUrl] = useState(null);
+
+  const selectedGame = games.find(g => g.id === selectedGameId);
+
+  const handleGenerateQR = () => {
+    if (!selectedGame) return;
+    const text = `${selectedGame.name}\n${selectedGame.description || ""}`;
+    const encoded = encodeURIComponent(text);
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encoded}`;
+    setQrUrl(url);
+  };
+
+  return (
+    <Modal title="📱 QR 코드 공유" onClose={onClose}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Field label="게임 선택">
+          <Select value={selectedGameId} onChange={e => setSelectedGameId(e.target.value)}>
+            <option value="">게임을 선택하세요</option>
+            {games.map(game => (
+              <option key={game.id} value={game.id}>{game.name}</option>
+            ))}
+          </Select>
+        </Field>
+        {selectedGame && (
+          <>
+            <div style={{ background: C.surface2, borderRadius: 8, padding: 12, fontSize: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{selectedGame.name}</div>
+              <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5 }}>{selectedGame.description}</div>
+            </div>
+            <Btn onClick={handleGenerateQR}>📱 QR 코드 생성</Btn>
+          </>
+        )}
+        {qrUrl && (
+          <div style={{ textAlign: "center" }}>
+            <img src={qrUrl} alt="QR Code" style={{ maxWidth: "100%", borderRadius: 8 }} />
+            <div style={{ fontSize: 11, color: C.textDim, marginTop: 8 }}>게임 정보가 담긴 QR 코드</div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
 }
 
 // ─── 컴포넌트 ─────────────────────────────────
@@ -417,6 +951,7 @@ function BoardGameApp() {
   const [timerGame, setTimerGame] = useState(null);
   const [showScoreSheet, setShowScoreSheet] = useState(false);
   const [scoreSheetGame, setScoreSheetGame] = useState(null);
+  const [activeTool, setActiveTool] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -529,6 +1064,7 @@ function BoardGameApp() {
             { id: "history",  label: "📋 플레이 기록" },
             { id: "stats",    label: "📊 통계" },
             { id: "wishlist", label: "🎁 위시리스트" },
+            { id: "tools",    label: "🎲 도구" },
             { id: "cafe",     label: "🗺 카페 찾기" },
           ].map((tab) => (
             <button
@@ -853,6 +1389,40 @@ function BoardGameApp() {
           </div>
         )}
 
+        {/* ══════ TAB: 도구 ══════ */}
+        {activeTab === "tools" && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>🎲 도구</div>
+              <div style={{ fontSize: 12, color: C.textDim }}>보드게임을 즐기는데 필요한 유용한 도구들</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+              {[
+                { id: "turn_order", emoji: "🎯", label: "순서 뽑기" },
+                { id: "team_split", emoji: "👥", label: "팀 나누기" },
+                { id: "dice_roller", emoji: "🎰", label: "주사위 굴리기" },
+                { id: "coin_flip", emoji: "🪙", label: "동전 던지기" },
+                { id: "roulette", emoji: "🎡", label: "룰렛 돌리기" },
+                { id: "random_number", emoji: "🔢", label: "랜덤 숫자" },
+                { id: "tournament", emoji: "🏆", label: "대진표" },
+                { id: "bgm", emoji: "🎵", label: "배경음악" },
+                { id: "first_player", emoji: "⭐", label: "첫 번째 플레이어" },
+                { id: "vote", emoji: "🗳️", label: "투표" },
+                { id: "qr_share", emoji: "📱", label: "QR 코드 공유" },
+              ].map((tool) => (
+                <button key={tool.id} onClick={() => setActiveTool(tool.id)}
+                  style={{ padding: 16, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", transition: "all .2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = C.accent}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = C.border}
+                >
+                  <div style={{ fontSize: 28 }}>{tool.emoji}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, textAlign: "center", color: C.text }}>{tool.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ══════ TAB: 카페 찾기 ══════ */}
         {activeTab === "cafe" && (
           <div style={{ display: "grid", gap: 16 }}>
@@ -908,6 +1478,63 @@ function BoardGameApp() {
           </div>
         )}
       </main>
+
+      {/* ══ 도구 모달 ══ */}
+
+      {/* 순서 뽑기 */}
+      {activeTool === "turn_order" && (
+        <TurnOrderTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 팀 나누기 */}
+      {activeTool === "team_split" && (
+        <TeamSplitTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 주사위 굴리기 */}
+      {activeTool === "dice_roller" && (
+        <DiceRollerTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 동전 던지기 */}
+      {activeTool === "coin_flip" && (
+        <CoinFlipTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 룰렛 돌리기 */}
+      {activeTool === "roulette" && (
+        <RouletteTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 랜덤 숫자 */}
+      {activeTool === "random_number" && (
+        <RandomNumberTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 대진표 */}
+      {activeTool === "tournament" && (
+        <TournamentTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 배경음악 */}
+      {activeTool === "bgm" && (
+        <BGMTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 첫 번째 플레이어 */}
+      {activeTool === "first_player" && (
+        <FirstPlayerTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* 투표 */}
+      {activeTool === "vote" && (
+        <VoteTool onClose={() => setActiveTool(null)} />
+      )}
+
+      {/* QR 코드 공유 */}
+      {activeTool === "qr_share" && (
+        <QRShareTool games={games} onClose={() => setActiveTool(null)} />
+      )}
 
       {/* ══ 게임 상세 모달 ══ */}
       {selectedGame && (
